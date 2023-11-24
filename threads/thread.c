@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of processes in THREAD_BLOCK state */
+static struct list block_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +111,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&block_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -152,6 +156,32 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+}
+
+/* Called by timer_sleep() in timer.c 
+   You must ensure that no other threads can intervene 
+   before calling this function. */
+void
+thread_park (int64_t start, int64_t ticks) {
+	struct thread *t = thread_current ();
+	t->parked = start + ticks;
+	list_push_back (&block_list, &t->elem);
+	thread_block ();
+}
+
+/* Unpark threads. unparks all threads that can be unparked. */
+void
+thread_try_unpark (int64_t ticks) {
+	struct list_elem *e;
+	for (e = list_begin (&block_list); e != list_end (&block_list);) {
+		struct thread *t = list_entry (e, struct thread, elem);
+		if (t->parked <= ticks) {
+			e = list_remove (e);
+			thread_unblock (t);
+			continue;
+		}
+		e = list_next (e);
+	}
 }
 
 /* Prints thread statistics. */
