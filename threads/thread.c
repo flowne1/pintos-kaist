@@ -163,7 +163,10 @@ thread_tick (void) {
    before calling this function. */
 void
 thread_park (int64_t start, int64_t ticks) {
-	struct thread *t = thread_current ();
+	struct thread *t = thread_current();
+	
+	ASSERT (intr_get_level() == INTR_OFF);
+
 	t->parked = start + ticks;
 	list_push_back (&block_list, &t->elem);
 	thread_block ();
