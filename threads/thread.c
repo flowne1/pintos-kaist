@@ -18,6 +18,7 @@
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
+// 스레드의 커널스택에서 오버플로우가 발생한 경우, 쓰레드 매직을 수정하게 되는데 이를 통해 오버플로우를 검증한다.
 #define THREAD_MAGIC 0xcd6abf4b
 
 /* Random value for basic thread
@@ -28,7 +29,11 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+// list of threads, which manages sleeping threads 
+static struct list sleep_list;
+
 /* Idle thread. */
+// if there are no executable threads, idle_thread is scheduled to run on CPU
 static struct thread *idle_thread;
 
 /* Initial thread, the thread running init.c:main(). */
@@ -105,10 +110,12 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
+	/* Init the global thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	// init sleep_list additionaly
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -223,6 +230,48 @@ thread_block (void) {
 	thread_current ()->status = THREAD_BLOCKED;
 	schedule ();
 }
+
+// for current thread : update ticks_to_wakeup, push back in the sleep_list, and change status to BLOCKED. 
+void
+thread_sleep (int64_t ticks) {
+	struct thread *curr = thread_current ();
+	// check if current thread is NOT idle
+	if (curr != idle_thread){
+		// update 'ticks_to_wakeup' of current thread to 'ticks'
+		curr->ticks_to_wakeup = ticks;
+
+		// put current thread in sleep_list
+		list_push_back (&sleep_list, &(curr->elem)); // note : seems list_push_back could be replaced with 'list_insert_ordered', need check!
+		
+		// change status of current thread to BLOCKED and call schedule for context switching
+		thread_block ();
+	}
+}
+
+
+// if wakeup ticks of thread in sleep_list is expired, move the thread to ready_list and set status to READY
+void
+thread_wakeup (int64_t ticks) {
+	struct list_elem *e = list_begin(&sleep_list);
+
+	// note : should be modified, if thread_sleep use 'list_insert_ordered'
+	while (e != list_end(&sleep_list)) {
+		struct thread *t = list_entry(e, struct thread, elem);
+		struct list_elem *next = list_next(e);
+		// move expired thread, from sleep queue to ready queue
+		if (t->ticks_to_wakeup <= ticks) { // if time has passed enough
+			list_remove(e);
+			thread_unblock(t);
+			// list_push_back(&ready_list, e);
+			// t->status = THREAD_READY;
+		}
+
+		e = next;
+	}
+}
+
+
+
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -522,7 +571,7 @@ thread_launch (struct thread *th) {
 }
 
 /* Schedules a new process. At entry, interrupts must be off.
- * This function modify current thread's status to status and then
+ * This function modify current thread's status to 'status' and then
  * finds another thread to run and switches to it.
  * It's not safe to call printf() in the schedule(). */
 static void
@@ -561,7 +610,7 @@ schedule (void) {
 		/* If the thread we switched from is dying, destroy its struct
 		   thread. This must happen late so that thread_exit() doesn't
 		   pull out the rug under itself.
-		   We just queuing the page free reqeust here because the page is
+		   We just queuing the page free request here because the page is
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
 		   schedule(). */
@@ -588,3 +637,5 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+// 

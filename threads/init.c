@@ -74,6 +74,7 @@ main (void) {
 	bss_init ();
 
 	/* Break command line into arguments and parse options. */
+	// 운영체제가 실행될 때, 커맨드라인 인자를 입력받으면 이를 읽고 파싱한다
 	argv = read_command_line ();
 	argv = parse_options (argv);
 
