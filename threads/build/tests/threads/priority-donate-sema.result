@@ -20,4 +20,5 @@ Differences in `diff -u' format:
 - (priority-donate-sema) Thread M finished.
 - (priority-donate-sema) Thread L finished.
   (priority-donate-sema) Main thread finished.
-  (priority-donate-sema) end
+- (priority-donate-sema) end
++ (priority-donate-sema) 

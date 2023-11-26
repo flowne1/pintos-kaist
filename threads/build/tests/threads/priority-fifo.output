@@ -12,8 +12,15 @@ Executing 'priority-fifo':
 (priority-fifo) If the order varies then there is a bug.
 (priority-fifo) end
 Execution of 'priority-fifo' complete.
-Timer: 24 ticks
-Thread: 0 idle ticks, 24 kernel ticks, 0 user ticks
+Timer: 27 ticks
+Thread: 0 idle ticks, 27 kernel ticks, 0 user ticks
 Console: 557 characters output
 Keyboard: 0 keys pressed
-Powering off...
+Powering ofKernel PANIC at ../../threads/thread.c:316 in thread_current(): assertion `t->status == THREAD_RUNNING' failed.
+Call stack: 0x8004213301 0x8004206fec 0x8004209ef4 0x800421638f 0x80042164ad 0x8004210804 0x80042089e9 0x800420885d 0x8004208c44 0x800420986c 0x8004209cc1 0x80042163c6 0x80042164ad 0x8004210804 0x80042089e9 0x800420885d 0x8004208c44 0x8004213b14 0x8004213bbc 0x80042099ca 0x8004209e8b 0x8004218d83 0x80042072b5.
+The `backtrace' program can make call stacks useful.
+Read "Backtraces" in the "Debugging Tools" chapter
+of the Pintos documentation for more information.
+Timer: 28 ticks
+Thread: 0 idle ticks, 28 kernel ticks, 0 user ticks
+Console: 1
