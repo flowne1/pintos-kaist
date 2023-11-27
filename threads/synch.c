@@ -112,11 +112,15 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
+	if (!list_empty (&sema->waiters)){
 		// for priority scheduling
 		// there may be cases of priority changes. do sort, to ensure that list is currently sorted : is it necessary?
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
+		// do preemption, if needed
+		thread_try_preemption ();
+	}
+
 	sema->value++;
 	intr_set_level (old_level);
 }

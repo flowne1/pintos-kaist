@@ -212,13 +212,11 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-	thread_unblock (t);		// note : newly initiated thread's status is BLOCKED, need unblock
+	thread_unblock (t);		// note : default value of newly initiated thread's status is BLOCKED
 
 	// for priority scheduling
-	// if priority of newly created thread is higher than current one, new thread must preempt CPU(and old one yields CPU)
-	if (priority > thread_current ()->priority) {
-		thread_yield ();	// note : thread_yield put current thread into ready queue and call schedule()
-	}
+	// try preemption
+	thread_try_preemption ();
 
 	return tid;
 }
@@ -369,16 +367,24 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+// compare priority of current thread with the very first thread in the ready queue
+// if the first thread has a higher priority than current one, call yield () for preemption
+void
+thread_try_preemption (void) {
+	if (!list_empty (&ready_list)) {	// note : ready list could be empty, need check
+		if (thread_current ()->priority < list_entry (list_front(&ready_list), struct thread, elem)->priority)
+			thread_yield ();	// note : thread_yield put current thread into ready queue and call schedule()
+	}
+}
+
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
 	// for priority scheduling
-	// if priority of first elem in ready queue(sorted by priority) is higher than current one, do yield()
-	// note : ready_list could be empty, need check!
-	if (!list_empty (&ready_list) && (new_priority < list_entry (list_front(&ready_list), struct thread, elem)->priority) ){
-		thread_yield ();
-	}
+	// try preemption
+	thread_try_preemption ();
 }
 
 /* Returns the current thread's priority. */
