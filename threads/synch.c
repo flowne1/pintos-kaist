@@ -115,13 +115,15 @@ sema_up (struct semaphore *sema) {
 	if (!list_empty (&sema->waiters)){
 		// for priority scheduling
 		// there may be cases of priority changes. do sort, to ensure that list is currently sorted : is it necessary?
+		// list_sort (&sema->waiters, &cmp_priority_greater, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
-		// do preemption, if needed
-		thread_try_preemption ();
 	}
 
 	sema->value++;
+	// for priority scheduling
+	// try preemption. ensure that sema-waiting thread is unblocked and sema value is incremented before trying
+	thread_try_preemption ();
 	intr_set_level (old_level);
 }
 
@@ -293,8 +295,8 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	sema_init (&waiter.semaphore, 0);
 	// for priority scheduling
 	// insertion strategy should be modified properly : to wake up thread with higher priority first
-	list_insert_ordered (&cond->waiters, &waiter.elem, &cmp_priority_greater, NULL);
-	// list_push_back (&cond->waiters, &waiter.elem);
+	// list_insert_ordered (&cond->waiters, &waiter.elem, &cmp_priority_greater_sema, NULL);
+	list_push_back (&cond->waiters, &waiter.elem);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -314,9 +316,14 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters)) 
+	if (!list_empty (&cond->waiters)){
+		// private note : due to the implementation of struct 'semaphore_elem' and function sema_down,
+		// sorting logic is applied when extracting element from list unlike other functions.
+		list_sort (&cond->waiters, &cmp_priority_greater_sema, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters), 
-					struct semaphore_elem, elem)->semaphore);		
+					struct semaphore_elem, elem)->semaphore);	
+	}
+	
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -332,4 +339,17 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
+}
+
+// returns true if t1->priority is greater than t2->priority
+// similar in logic to cmp_priority_greater in thread.c, but adapted for use with struct 'semaphore_elem'.
+bool cmp_priority_greater_sema (struct list_elem *e1, struct list_elem *e2) {
+	struct semaphore_elem *s_e1 = list_entry (e1, struct semaphore_elem, elem);
+	struct semaphore_elem *s_e2 = list_entry (e2, struct semaphore_elem, elem);
+	struct list *l1 = &s_e1->semaphore.waiters;
+	struct list *l2 = &s_e2->semaphore.waiters;
+	struct thread *t1 = list_entry (list_begin (l1), struct thread, elem);
+	struct thread *t2 = list_entry (list_begin (l2), struct thread, elem);
+
+	return (t1->priority > t2->priority);
 }
