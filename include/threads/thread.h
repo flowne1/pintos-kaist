@@ -148,4 +148,6 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
+bool cmp_priority_greater (struct list_elem *e1, struct list_elem *e2); // privately added
+
 #endif /* threads/thread.h */

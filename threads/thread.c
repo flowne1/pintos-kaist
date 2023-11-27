@@ -212,7 +212,13 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-	thread_unblock (t);
+	thread_unblock (t);		// note : newly initiated thread's status is BLOCKED, need unblock
+
+	// for priority scheduling
+	// if priority of newly created thread is higher than current one, new thread must preempt CPU(and old one yields CPU)
+	if (priority > thread_current ()->priority) {
+		thread_yield ();	// note : thread_yield put current thread into ready queue and call schedule()
+	}
 
 	return tid;
 }
@@ -262,8 +268,6 @@ thread_wakeup (int64_t ticks) {
 		if (t->ticks_to_wakeup <= ticks) { // if time has passed enough
 			list_remove(e);
 			thread_unblock(t);
-			// list_push_back(&ready_list, e);
-			// t->status = THREAD_READY;
 		}
 
 		e = next;
@@ -289,7 +293,12 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+
+	// for priority scheduling
+	// insertion strategy should be modified properly : maintain the ready queue in descending order of priority
+	list_insert_ordered (&ready_list, &(t->elem), &cmp_priority_greater, NULL);
+	// list_push_back (&ready_list, &t->elem);
+	
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -352,7 +361,10 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		// for priority scheduling
+		// insertion strategy should be modified properly : maintain the ready queue in descending order of priority
+		list_insert_ordered (&ready_list, &(curr->elem), &cmp_priority_greater, NULL);
+		// list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -361,6 +373,12 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	// for priority scheduling
+	// if priority of first elem in ready queue(sorted by priority) is higher than current one, do yield()
+	// note : ready_list could be empty, need check!
+	if (!list_empty (&ready_list) && (new_priority < list_entry (list_front(&ready_list), struct thread, elem)->priority) ){
+		thread_yield ();
+	}
 }
 
 /* Returns the current thread's priority. */
@@ -637,5 +655,14 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+// find parent struct of e1,e2(= t1,t2)
+// returns true if t1->priority is greater than t2->priority
+bool cmp_priority_greater (struct list_elem *e1, struct list_elem *e2) {
+	struct thread *t1 = list_entry (e1, struct thread, elem);
+	struct thread *t2 = list_entry (e2, struct thread, elem);
+	return (t1->priority > t2->priority);
+}
+
 
 // 
