@@ -163,13 +163,24 @@ thread_tick (void) {
    before calling this function. */
 void
 thread_park (int64_t start, int64_t ticks) {
-	struct thread *t = thread_current();
+	struct thread *t;
+  	enum intr_level old_level;
+	old_level = intr_disable ();
 	
-	ASSERT (intr_get_level() == INTR_OFF);
-
+	t = thread_current ();
 	t->parked = start + ticks;
-	list_push_back (&block_list, &t->elem);
+	list_insert_ordered (&block_list, &t->elem, cmp_thrd_priorities, NULL);
 	thread_block ();
+
+	intr_set_level (old_level);
+}
+
+bool
+cmp_thrd_priorities (const struct list_elem *lhs, const struct list_elem *rhs, void *aux UNUSED) {
+	struct thread *left_thrd = list_entry (lhs, struct thread, elem);
+	struct thread *right_thrd = list_entry (rhs, struct thread, elem);
+
+	return left_thrd->priority > right_thrd->priority;
 }
 
 /* Unpark threads. unparks all threads that can be unparked. */
@@ -212,7 +223,7 @@ thread_print_stats (void) {
 tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
-	struct thread *t;
+	struct thread *t, *next;
 	tid_t tid;
 
 	ASSERT (function != NULL);
@@ -239,6 +250,11 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+
+	if (!list_empty (&ready_list)) {
+		next = list_entry (list_front (&ready_list), struct thread, elem);
+		thread_yield_if (thread_current ()->priority < next->priority);
+	}
 
 	return tid;
 }
@@ -273,7 +289,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, cmp_thrd_priorities, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -336,15 +352,49 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, cmp_thrd_priorities, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+}
+
+/* Yields the CPU when predicate is true. */
+bool
+thread_yield_if (bool predicate) {
+	if (predicate) {
+		thread_yield ();
+		return true;
+	}
+
+	return false;
+}
+
+bool
+thread_yield_priority (void) {
+	struct thread *next;
+	if (!list_empty (&ready_list)) {
+		next = list_entry (list_front (&ready_list), struct thread, elem);
+		return thread_yield_if (thread_current ()->priority < next->priority);
+	}
+
+	return false;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	struct thread *curr = thread_current ();
+
+	/* The mlfq scheduler adjust priorities automatically */
+	if (thread_mlfqs) {
+		return;
+	}
+
+	curr->priority = new_priority;
+
+	if (!list_empty (&ready_list)) {
+		struct thread *next = list_entry (list_front (&ready_list), struct thread, elem);
+		thread_yield_if (curr->priority < next->priority);
+	}
 }
 
 /* Returns the current thread's priority. */
