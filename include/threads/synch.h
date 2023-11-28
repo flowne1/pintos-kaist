@@ -41,7 +41,7 @@ void cond_broadcast (struct condition *, struct lock *);
 /* Comparator. */
 bool cmp_sema_waiters_priorities (const struct list_elem *, 
 							const struct list_elem *,
-							void *aux);
+							void *aux UNUSED);
 							
 /* Optimization barrier.
  *

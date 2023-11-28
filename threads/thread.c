@@ -183,6 +183,14 @@ cmp_thrd_priorities (const struct list_elem *lhs, const struct list_elem *rhs, v
 	return left_thrd->priority > right_thrd->priority;
 }
 
+bool
+cmp_thrd_donation_priorities (const struct list_elem *lhs, const struct list_elem *rhs, void *aux UNUSED) {
+	struct thread *left_thrd = list_entry (lhs, struct thread, delem);
+	struct thread *right_thrd = list_entry (rhs, struct thread, delem);
+
+	return left_thrd->priority > right_thrd->priority;
+}
+
 /* Unpark threads. unparks all threads that can be unparked. */
 void
 thread_try_unpark (int64_t ticks) {
@@ -382,19 +390,31 @@ thread_yield_priority (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+	struct thread *curr;
+	int max_priority;
 
 	/* The mlfq scheduler adjust priorities automatically */
 	if (thread_mlfqs) {
 		return;
 	}
 
+	old_level = intr_disable ();
+	curr = thread_current ();
+	max_priority = curr->priority;
 	curr->priority = new_priority;
+	curr->prev_priority = new_priority;
 
-	if (!list_empty (&ready_list)) {
-		struct thread *next = list_entry (list_front (&ready_list), struct thread, elem);
-		thread_yield_if (curr->priority < next->priority);
+	if (!list_empty (&curr->donations)) {
+		max_priority = list_entry (list_begin (&curr->donations),
+						struct thread, delem)->priority;
+		if (curr->priority < max_priority) {
+			curr->priority = max_priority;
+		}
 	}
+	
+	thread_yield_if (max_priority > new_priority);
+	intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -491,6 +511,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->prev_priority = priority;
+	list_init (&t->donations);
 	t->magic = THREAD_MAGIC;
 }
 
