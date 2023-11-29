@@ -93,7 +93,11 @@ struct thread {
 	int priority;                       /* Priority. */
 
 	// privately added
-	int64_t ticks_to_wakeup;				// storing ticks till wakeup
+	int original_priority;				// original priority of 
+	int64_t ticks_to_wakeup;			// storing ticks till wakeup
+	struct list donor_list;				// list of priority donors for multiple donation
+	struct list_elem d_elem;			// list elem for 'donor_list'
+	struct lock *lock_waiting;			// pointer of lock that a thread is waiting to acquire
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -142,6 +146,9 @@ void thread_try_preemption (void);	// privately added
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_donate_priority (void); // privately added
+void thread_update_priority (void); // privately added
+void thread_remove_donor (struct lock *lock); // privately added
 
 int thread_get_nice (void);
 void thread_set_nice (int);
@@ -151,5 +158,6 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 bool cmp_priority_greater (struct list_elem *e1, struct list_elem *e2); // privately added
+bool cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2); // privately added
 
 #endif /* threads/thread.h */

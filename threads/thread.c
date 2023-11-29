@@ -114,7 +114,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
-	// init sleep_list additionaly
+	// additional inits
 	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
@@ -381,9 +381,12 @@ thread_try_preemption (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
-	// for priority scheduling
-	// try preemption
+	// For priority donation
+	// Set original priority of thread to new_priority, and update priority
+	thread_current ()->original_priority = new_priority;
+	thread_update_priority ();
+	// For priority scheduling
+	// Try preemption
 	thread_try_preemption ();
 }
 
@@ -392,6 +395,68 @@ int
 thread_get_priority (void) {
 	return thread_current ()->priority;
 }
+
+// Donates priority of current thread to holder of lock being requested and update holder's donor_list, if donor has higher priority
+void
+thread_donate_priority (void) {
+	// Initial check for donor and donee
+	struct thread *donor = thread_current ();
+	if (!donor->lock_waiting) 
+		return;
+	struct thread *donee = donor->lock_waiting->holder;
+
+	// Private note : if priority of donor is higher than that of donee, it implies that priority of all nested holders should be updated.
+	// Else we could skip priority donation, because nested holders already have higher priority than current thread
+	if (donor->priority <= donee->priority)
+		return;
+
+	// Implement nested donation
+	enum intr_level old_level = intr_disable ();
+	int max_nested_depth = 8;
+	for (int i = 0; i < max_nested_depth; i++) {
+		donee->priority = donor->priority;
+		
+		donor = donee;
+		if (!donor->lock_waiting) 
+			break;
+		donee = donor->lock_waiting->holder;
+	}
+	intr_set_level (old_level);
+}
+
+// Update priority of current thread by checking donor_list
+// This function assumes that the donor_list is sorted by priority
+// If the donor_list is empty, priority of current thread is updated to original priority
+void 
+thread_update_priority (void) {
+	struct thread *curr = thread_current ();
+	if (list_empty (&curr->donor_list)){
+		curr->priority = curr->original_priority;
+		return;
+	}
+
+	struct thread *highest_donor = list_entry (list_front (&curr->donor_list), struct thread, d_elem);
+	if (highest_donor->priority > curr->priority)
+		curr->priority = highest_donor->priority;
+}
+
+// Traverse donor_list of current thread and remove donor if that donor is wating for 'lock'
+// where to put? need check
+void 
+thread_remove_donor (struct lock *lock) {
+	struct thread *curr = thread_current ();
+	if (list_empty (&curr->donor_list))
+		return;
+	
+	struct thread *t = list_front (&curr->donor_list);
+	while (t != list_end (&curr->donor_list)) {
+		struct thread *t_next = list_next(t);
+		if (t->lock_waiting == lock)
+			list_remove (&t->d_elem);
+		t = t_next;
+	}
+}
+
 
 /* Sets the current thread's nice value to NICE. */
 void
@@ -482,6 +547,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	// privately added
+	t->original_priority = priority;
+	list_init (&t->donor_list);
+	t->lock_waiting = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -664,11 +734,20 @@ allocate_tid (void) {
 
 // find parent struct of e1,e2(= t1,t2)
 // returns true if t1->priority is greater than t2->priority
-bool cmp_priority_greater (struct list_elem *e1, struct list_elem *e2) {
+bool 
+cmp_priority_greater (struct list_elem *e1, struct list_elem *e2) {
 	struct thread *t1 = list_entry (e1, struct thread, elem);
 	struct thread *t2 = list_entry (e2, struct thread, elem);
 	return (t1->priority > t2->priority);
 }
 
+// Returns true if t1->priority is greater than t2->priority
+// Adpated for 'donor_list' and 'd_elem'
+bool
+cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2) {
+	struct thread *t1 = list_entry (e1, struct thread, d_elem);
+	struct thread *t2 = list_entry (e2, struct thread, d_elem);
+	return (t1->priority > t2->priority);
+}
 
 // 
