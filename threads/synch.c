@@ -115,7 +115,7 @@ sema_up (struct semaphore *sema) {
 	if (!list_empty (&sema->waiters)){
 		// for priority scheduling
 		// there may be cases of priority changes. do sort, to ensure that list is currently sorted : is it necessary?
-		// list_sort (&sema->waiters, &cmp_priority_greater, NULL);
+		list_sort (&sema->waiters, &cmp_priority_greater, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
 	}
@@ -199,12 +199,13 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	// // For priority donation
-	// // If lock is held by other thread, 1. store lock in 'lock_waiting' 2. update donor_list of lock-holder 3. donate priority
-	// // Private note : if current thread is trying to acquire lock, it means that priority of current thread is the HIGHEST among all threads
+	// For priority donation
+	// If lock is held by other thread, 1. store lock in 'lock_waiting' 2. update donor_list of lock-holder 3. donate priority
 	if (lock->holder) {
 		thread_current ()->lock_waiting = lock;
+		// Private note : thread_current must be inserted to donor_list of 'direct donee' just once, not all nested donees.
 		list_insert_ordered (&lock->holder->donor_list, &thread_current ()->d_elem, &cmp_priority_greater_dona, NULL);
+		// Private note : if current thread is trying to acquire lock, it implies that priority of current thread is the HIGHEST among all threads
 		thread_donate_priority ();
 	}
 

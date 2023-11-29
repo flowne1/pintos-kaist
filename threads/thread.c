@@ -405,10 +405,10 @@ thread_donate_priority (void) {
 		return;
 	struct thread *donee = donor->lock_waiting->holder;
 
-	// Private note : if priority of donor is higher than that of donee, it implies that priority of all nested holders should be updated.
+	// Private note : If priority of donor is higher than that of donee, it implies that priority of all nested holders should be updated.
 	// Else we could skip priority donation, because nested holders already have higher priority than current thread
 	if (donor->priority <= donee->priority)
-		return;
+		return;	
 
 	// Implement nested donation
 	enum intr_level old_level = intr_disable ();
@@ -425,35 +425,39 @@ thread_donate_priority (void) {
 }
 
 // Update priority of current thread by checking donor_list
-// This function assumes that the donor_list is sorted by priority
-// If the donor_list is empty, priority of current thread is updated to original priority
+// Check current thread's original priority and its donors' priorities, and set HIGHEST priority among them.
 void 
 thread_update_priority (void) {
 	struct thread *curr = thread_current ();
-	if (list_empty (&curr->donor_list)){
-		curr->priority = curr->original_priority;
-		return;
-	}
+	// Private note : Considering the possibility that the priority of current thread is changed due to nested donation, 
+	// this function will unconditionally set its priority to original level.
+	curr->priority = curr->original_priority;
 
+	// If empty, there is no need to further update
+	if (list_empty (&curr->donor_list))
+		return;
+
+	// Private note : call sort function, ensuring that donor_list is sorted by priority
+	list_sort (&curr->donor_list, &cmp_priority_greater_dona, NULL);
 	struct thread *highest_donor = list_entry (list_front (&curr->donor_list), struct thread, d_elem);
 	if (highest_donor->priority > curr->priority)
 		curr->priority = highest_donor->priority;
 }
 
 // Traverse donor_list of current thread and remove donor if that donor is wating for 'lock'
-// where to put? need check
 void 
 thread_remove_donor (struct lock *lock) {
 	struct thread *curr = thread_current ();
 	if (list_empty (&curr->donor_list))
 		return;
 	
-	struct thread *t = list_front (&curr->donor_list);
-	while (t != list_end (&curr->donor_list)) {
-		struct thread *t_next = list_next(t);
+	struct list_elem *d_e = list_front (&curr->donor_list);
+	while (d_e != list_end (&curr->donor_list)) {
+		struct thread *t = list_entry (d_e, struct thread, d_elem);
+		struct list_elem *d_e_next = list_next(d_e);
 		if (t->lock_waiting == lock)
 			list_remove (&t->d_elem);
-		t = t_next;
+		d_e = d_e_next;
 	}
 }
 
