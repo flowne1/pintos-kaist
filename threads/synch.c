@@ -216,7 +216,7 @@ lock_acquire (struct lock *lock) {
 						cmp_thrd_donation_priorities, NULL);
 		max_priority = curr->priority;
 
-		struct thread* cursor = holder;
+		struct thread *cursor = holder;
 		while (cursor->lock != NULL) {
 			if (max_priority < cursor->priority) {
 				max_priority = cursor->priority;
@@ -283,7 +283,7 @@ lock_release (struct lock *lock) {
 	for (struct list_elem *e = list_begin (&holder->donations);
 		e != list_end (&holder->donations);) {
 
-		struct thread* t = list_entry (e, struct thread, delem);
+		struct thread *t = list_entry (e, struct thread, delem);
 		if (t->lock == lock) {
 			e = list_remove (e);
 			continue;
