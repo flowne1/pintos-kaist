@@ -389,9 +389,10 @@ thread_yield_if (bool predicate) {
 bool
 thread_yield_priority (void) {
 	struct thread *next;
+	
 	if (!list_empty (&ready_list)) {
 		next = list_entry (list_front (&ready_list), struct thread, elem);
-		return thread_yield_if (thread_current ()->priority < next->priority);
+		return thread_yield_if (!intr_context () && thread_current ()->priority < next->priority);
 	}
 
 	return false;
