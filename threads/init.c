@@ -74,7 +74,6 @@ main (void) {
 	bss_init ();
 
 	/* Break command line into arguments and parse options. */
-	// 운영체제가 실행될 때, 커맨드라인 인자를 입력받으면 이를 읽고 파싱한다
 	argv = read_command_line ();
 	argv = parse_options (argv);
 
@@ -107,6 +106,7 @@ main (void) {
 	serial_init_queue ();
 	timer_calibrate ();
 
+
 #ifdef FILESYS
 	/* Initialize file system. */
 	disk_init ();
@@ -118,6 +118,7 @@ main (void) {
 #endif
 
 	printf ("Boot complete.\n");
+
 
 	/* Run actions specified on kernel command line. */
 	run_actions (argv);

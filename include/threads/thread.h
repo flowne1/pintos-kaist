@@ -92,12 +92,16 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
-	// privately added
-	int original_priority;				// original priority of 
-	int64_t ticks_to_wakeup;			// storing ticks till wakeup
-	struct list donor_list;				// list of priority donors for multiple donation
-	struct list_elem d_elem;			// list elem for 'donor_list'
-	struct lock *lock_waiting;			// pointer of lock that a thread is waiting to acquire
+	// Privately added
+	int original_priority;				// Original priority of 
+	int64_t ticks_to_wakeup;			// Storing ticks till wakeup
+	struct list donor_list;				// List of priority donors for multiple donation
+	struct list_elem d_elem;			// List elem for 'donor_list'
+	struct lock *lock_waiting;			// Pointer of lock that a thread is waiting to acquire
+
+	int nice;							// 'Niceness' of thread to other threads
+	int recent_cpu;						// Stores the number of ticks recently used by the thread, incrementing per each timer tick
+	struct list_elem t_elem;			// List elem for 'List of all threads'
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -149,6 +153,13 @@ void thread_set_priority (int);
 void thread_donate_priority (void); // privately added
 void thread_update_priority (void); // privately added
 void thread_remove_donor (struct lock *lock); // privately added
+
+// for mlfqs
+void thread_recalc_priority (struct thread *t); // privately added
+void thread_recalc_priority_all (void); // privately added
+void thread_recalc_load_avg (void); // privately added
+void thread_recalc_recent_cpu (struct thread *t); // privately added
+void thread_recalc_recent_cpu_all (void); // privately added
 
 int thread_get_nice (void);
 void thread_set_nice (int);

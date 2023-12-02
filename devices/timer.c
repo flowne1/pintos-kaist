@@ -93,15 +93,13 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 	ASSERT (intr_get_level () == INTR_ON);
 
-	// turn off interrupt
 	enum intr_level old_level = intr_disable ();
+
 	// make thread sleep for 'ticks' ticks using global ticks(=start)
 	thread_sleep (start + ticks);		
-	// restore interrupt level
+	
 	intr_set_level (old_level);
 
-	// while (timer_elapsed (start) < ticks)
-	// 	thread_yield ();
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -133,8 +131,22 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
-	// When a timer interrupt occurs, wake up threads in sleep_list if their local ticks is expired
-	thread_wakeup (ticks);		// 'ticks' are given because function compares global ticks and local ticks of thread
+	// When a timer interrupt occurs, wake up threads in sleep_list if their 'local ticks' is expired
+	thread_wakeup (ticks);
+
+	// For mlfqs
+	if (thread_mlfqs) {
+		// Incrememnt recent_cpu of current thread per timer tick
+		thread_current ()->recent_cpu++;
+		// Recalculate load_avg, recent_cpu every 1 sec(= TIMER FREQ ticks)
+		if (ticks % TIMER_FREQ == 0) {
+			thread_recalc_load_avg ();
+			thread_recalc_recent_cpu_all ();
+		}
+		// Recalculate priority for all threads every 4th tick
+		if (ticks % 4 == 0)
+			thread_recalc_priority_all ();
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

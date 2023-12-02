@@ -199,6 +199,14 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	// For mlfqs
+	// If mlfqs is enabled, forbid logics for priority donation
+	if (thread_mlfqs) {
+		sema_down (&lock->semaphore);
+		lock->holder = thread_current ();
+		return;
+	}
+
 	// For priority donation
 	// If lock is held by other thread, 1. store lock in 'lock_waiting' 2. update donor_list of lock-holder 3. donate priority
 	if (lock->holder) {
@@ -211,7 +219,7 @@ lock_acquire (struct lock *lock) {
 
 	sema_down (&lock->semaphore);
 	// For priority donation
-	// update lock_waiting to NULL
+	// Update lock_waiting to NULL
 	thread_current ()->lock_waiting = NULL;
 	lock->holder = thread_current ();
 }
@@ -245,6 +253,13 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+	// For mlfqs
+	// If mlfqs is enabled, forbid logics for priority donation
+	if (thread_mlfqs) {
+		lock->holder = NULL;
+		sema_up (&lock->semaphore);
+		return;
+	}
 
 	// For priority donation
 	// If lock is released, remove lock_waiting thread from donor_list and update priority of current thread
