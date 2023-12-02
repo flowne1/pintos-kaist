@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "lib/fixed.h"	// Privately added
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -54,8 +55,9 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 // Variables for mlfqs
-static int fixed_load_avg; 		// Load_avg, scaled to fixed point
-const static int f = 1 << 14;	// F value for 17.14 format fixed point calculating
+static int fixed_load_avg; 			// Load_avg, scaled to fixed point
+static const int fixed_w1 = 16110;	// fixed point of 59/60, Weight value used in thread_recalc_load_avg
+static const int fixed_w2 = 273;	// fixed point of 1/60, Weight value used in thread_recalc_load_avg
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -479,14 +481,14 @@ thread_remove_donor (struct lock *lock) {
 void thread_recalc_priority (struct thread *t) {
 	enum intr_level old_level = intr_disable ();
 
-	int recent_cpu_t = t->recent_cpu;
-	int nice_t = t->nice;
+	int fixed_recent_cpu_t = (t->recent_cpu) * fx_scale;
+	int fixed_nice_t = (t->nice) * fx_scale;
 
 	// Private note : coeff 4 and 2 lack theoretical meaning, but they are practically proven to work well
-	int fixed_adj_recent_cpu = div_fixeds (recent_cpu_t * f, 4 * f);
-	int fixed_adj_nice = mult_fixeds (nice_t * f, 2 * f);
+	int fixed_adj_recent_cpu = div_fixeds (fixed_recent_cpu_t, 4 * fx_scale);
+	int fixed_adj_nice = mult_fixeds (fixed_nice_t, 2 * fx_scale);
 
-	int new_priority = fxtoi (PRI_MAX * f - fixed_adj_recent_cpu - fixed_adj_nice);
+	int new_priority = fxtoi (PRI_MAX * fx_scale - fixed_adj_recent_cpu - fixed_adj_nice);
 	t->priority = new_priority;
 
 	intr_set_level (old_level);
@@ -507,23 +509,15 @@ void thread_recalc_priority_all (void) {
 
 // Calculate and reset load_avg at the very time when function is called
 void thread_recalc_load_avg (void) {
-	// Weights for load_avg and ready_threads
-	// Private note : these values don't need to be calculated repeatedly... how to fix?
-	int fixed_w1 = div_fixeds (59 * f, 60 * f);
-	int fixed_w2 = div_fixeds (1 * f, 60 * f);
-
 	enum intr_level old_level = intr_disable ();
 	
 	// The number of threads in ready_list and threads in executing at the time of update.
-	int num_ready_threads = list_size (&ready_list) + 1;
+	int fixed_num_ready_threads = (list_size (&ready_list) + 1) * fx_scale;
 	if (thread_current () == idle_thread)
-		num_ready_threads = 0;
+		fixed_num_ready_threads = 0;
 
 	// Update fixed_load_avg
-	fixed_load_avg = mult_fixeds (fixed_w1, fixed_load_avg) + mult_fixeds (fixed_w2, num_ready_threads * f);
-
-	// printf("updated load_avg : %i\n", thread_get_load_avg ());
-	// printf("current thread is : %s, priority : %i, recent_cpu : %i\n", thread_current ()->name, thread_current ()->priority, thread_current ()->recent_cpu);
+	fixed_load_avg = mult_fixeds (fixed_w1, fixed_load_avg) + mult_fixeds (fixed_w2, fixed_num_ready_threads);
 
 	intr_set_level (old_level);
 }
@@ -532,9 +526,9 @@ void thread_recalc_load_avg (void) {
 void thread_recalc_recent_cpu (struct thread *t) {
 	enum intr_level old_level = intr_disable ();
 
-	int fixed_recent_cpu_t = (t->recent_cpu) * f;
-	int fixed_nice_t = (t->nice) * f;
-	int fixed_decay = div_fixeds (mult_fixeds (fixed_load_avg, 2 * f), mult_fixeds (fixed_load_avg, 2 * f) + 1 * f);
+	int fixed_recent_cpu_t = (t->recent_cpu) * fx_scale;
+	int fixed_nice_t = (t->nice) * fx_scale;
+	int fixed_decay = div_fixeds (mult_fixeds (fixed_load_avg, 2 * fx_scale), mult_fixeds (fixed_load_avg, 2 * fx_scale) + 1 * fx_scale);
 	int new_recent_cpu = fxtoi (mult_fixeds (fixed_decay, fixed_recent_cpu_t) + fixed_nice_t);
 
 	t->recent_cpu = new_recent_cpu;
@@ -575,7 +569,7 @@ thread_get_nice (void) {
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
-	return fxtoi (mult_fixeds (fixed_load_avg, 100 * f));
+	return fxtoi (mult_fixeds (fixed_load_avg, 100 * fx_scale));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -853,42 +847,3 @@ cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2) {
 	return (t1->priority > t2->priority);
 }
 
-// Calculating functions for fixed points
-// Private note : these functions assumes that arguments given are 'fixed point', except convert functions
-
-// Convert fixed point to integer
-int fxtoi (int x) {
-	return x / f;
-}
-
-// Round fixed point to its nearest integer
-int round_to_nearest_fixed (int x) {
-	if (x >= 0)
-		return (x + f / 2) / f;
-	else
-		return (x - f / 2) / f;
-}
-
-// Multiply fixed point by fixed point
-int mult_fixeds (int x, int y) {
-	return ((int64_t) x) * y / f;
-}
-
-// Multiply fixed point by real number, scaling real number to fixed point
-// Order of arguments is important
-int mult_fixed_real (int x, int n) {
-	int y = n * f;
-	return mult_fixeds (x, y);
-}
-
-// Divide fixed point by fixed point
-int div_fixeds (int x, int y) {
-	return ((int64_t) x) * f / y;
-}
-
-// Divide fixed point by real value, scaling real number to fixed point
-// Order of arguments is important
-int div_fixed_real (int x, int n) {
-	int y = n * f;
-	return div_fixeds (x, y);
-}
