@@ -8,8 +8,8 @@ const int fx_scale = 1 << 14;	// F value for 17.14 format fixed point calculatin
 // Calculating functions for fixed points
 // Private note : these functions assumes that arguments given are 'fixed point', except convert functions
 
-// Convert fixed point to integer
-int fxtoi (int x) {
+// Convert fixed point to real value
+int fxtor (int x) {
 	return x / fx_scale;
 }
 

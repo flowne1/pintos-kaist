@@ -7,6 +7,7 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "fixed.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -137,7 +138,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	// For mlfqs
 	if (thread_mlfqs) {
 		// Incrememnt recent_cpu of current thread per timer tick
-		thread_current ()->recent_cpu++;
+		thread_current ()->fixed_recent_cpu += 1 * fx_scale;
 		// Recalculate load_avg, recent_cpu every 1 sec(= TIMER FREQ ticks)
 		if (ticks % TIMER_FREQ == 0) {
 			thread_recalc_load_avg ();

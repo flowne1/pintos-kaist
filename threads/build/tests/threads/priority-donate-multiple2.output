@@ -4,7 +4,7 @@ Kernel command line: -q run priority-donate-multiple2
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  153,804,800 loops/s.
+Calibrating timer...  58,880,000 loops/s.
 Boot complete.
 Executing 'priority-donate-multiple2':
 (priority-donate-multiple2) begin
@@ -22,6 +22,6 @@ Executing 'priority-donate-multiple2':
 Execution of 'priority-donate-multiple2' complete.
 Timer: 31 ticks
 Thread: 0 idle ticks, 32 kernel ticks, 0 user ticks
-Console: 1165 characters output
+Console: 1164 characters output
 Keyboard: 0 keys pressed
 Powering off...

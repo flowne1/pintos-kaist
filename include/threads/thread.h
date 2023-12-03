@@ -100,7 +100,7 @@ struct thread {
 	struct lock *lock_waiting;			// Pointer of lock that a thread is waiting to acquire
 
 	int nice;							// 'Niceness' of thread to other threads
-	int recent_cpu;						// Stores the number of ticks recently used by the thread, incrementing per each timer tick
+	int fixed_recent_cpu;				// Stores fixed scaled ticks recently used by the thread, incrementing per each timer tick
 	struct list_elem t_elem;			// List elem for 'List of all threads'
 
 	/* Shared between thread.c and synch.c. */

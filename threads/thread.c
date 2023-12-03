@@ -481,14 +481,14 @@ thread_remove_donor (struct lock *lock) {
 void thread_recalc_priority (struct thread *t) {
 	enum intr_level old_level = intr_disable ();
 
-	int fixed_recent_cpu_t = (t->recent_cpu) * fx_scale;
+	int fixed_recent_cpu_t = t->fixed_recent_cpu;
 	int fixed_nice_t = (t->nice) * fx_scale;
 
 	// Private note : coeff 4 and 2 lack theoretical meaning, but they are practically proven to work well
 	int fixed_adj_recent_cpu = div_fixeds (fixed_recent_cpu_t, 4 * fx_scale);
 	int fixed_adj_nice = mult_fixeds (fixed_nice_t, 2 * fx_scale);
 
-	int new_priority = fxtoi (PRI_MAX * fx_scale - fixed_adj_recent_cpu - fixed_adj_nice);
+	int new_priority = fxtor (PRI_MAX * fx_scale - fixed_adj_recent_cpu - fixed_adj_nice);
 	t->priority = new_priority;
 
 	intr_set_level (old_level);
@@ -526,12 +526,12 @@ void thread_recalc_load_avg (void) {
 void thread_recalc_recent_cpu (struct thread *t) {
 	enum intr_level old_level = intr_disable ();
 
-	int fixed_recent_cpu_t = (t->recent_cpu) * fx_scale;
+	int fixed_recent_cpu_t = t->fixed_recent_cpu;
 	int fixed_nice_t = (t->nice) * fx_scale;
 	int fixed_decay = div_fixeds (mult_fixeds (fixed_load_avg, 2 * fx_scale), mult_fixeds (fixed_load_avg, 2 * fx_scale) + 1 * fx_scale);
-	int new_recent_cpu = fxtoi (mult_fixeds (fixed_decay, fixed_recent_cpu_t) + fixed_nice_t);
+	int new_fixed_recent_cpu = mult_fixeds (fixed_decay, fixed_recent_cpu_t) + fixed_nice_t;
 
-	t->recent_cpu = new_recent_cpu;
+	t->fixed_recent_cpu = new_fixed_recent_cpu;
 
 	intr_set_level (old_level);
 }
@@ -569,13 +569,13 @@ thread_get_nice (void) {
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
-	return fxtoi (mult_fixeds (fixed_load_avg, 100 * fx_scale));
+	return fxtor (mult_fixeds (fixed_load_avg, 100 * fx_scale));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
-	return 100 * thread_current ()->recent_cpu;
+	return fxtor (mult_fixeds (thread_current ()->fixed_recent_cpu, 100 * fx_scale));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -647,7 +647,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->lock_waiting = NULL;
 
 	t->nice = 0;
-	t->recent_cpu = 0;
+	t->fixed_recent_cpu = 0;
 	list_push_back (&thread_list, &t->t_elem);
 }
 
@@ -829,8 +829,7 @@ allocate_tid (void) {
 	return tid;
 }
 
-// find parent struct of e1,e2(= t1,t2)
-// returns true if t1->priority is greater than t2->priority
+// Given list elem e1 and e2, returns true if t1->priority is greater than t2->priority
 bool 
 cmp_priority_greater (struct list_elem *e1, struct list_elem *e2) {
 	struct thread *t1 = list_entry (e1, struct thread, elem);
@@ -838,7 +837,7 @@ cmp_priority_greater (struct list_elem *e1, struct list_elem *e2) {
 	return (t1->priority > t2->priority);
 }
 
-// Returns true if t1->priority is greater than t2->priority
+// Given list elem e1 and e2, returns true if t1->priority is greater than t2->priority
 // Adpated for 'donor_list' and 'd_elem'
 bool
 cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2) {
@@ -846,4 +845,3 @@ cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2) {
 	struct thread *t2 = list_entry (e2, struct thread, d_elem);
 	return (t1->priority > t2->priority);
 }
-
