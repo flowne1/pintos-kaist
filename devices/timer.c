@@ -131,7 +131,6 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick ();
 	// When a timer interrupt occurs, wake up threads in sleep_list if their 'local ticks' is expired
 	thread_wakeup (ticks);
 
@@ -148,6 +147,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 		if (ticks % 4 == 0)
 			thread_recalc_priority_all ();
 	}
+	thread_tick ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

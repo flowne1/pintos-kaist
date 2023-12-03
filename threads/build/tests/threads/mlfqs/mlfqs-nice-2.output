@@ -15,8 +15,8 @@ Executing 'mlfqs-nice-2':
 (mlfqs-nice-2) Thread 1 received 1065 ticks.
 (mlfqs-nice-2) end
 Execution of 'mlfqs-nice-2' complete.
-Timer: 4024 ticks
-Thread: 1000 idle ticks, 3024 kernel ticks, 0 user ticks
+Timer: 4023 ticks
+Thread: 1000 idle ticks, 3023 kernel ticks, 0 user ticks
 Console: 674 characters output
 Keyboard: 0 keys pressed
 Powering off...
