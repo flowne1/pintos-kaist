@@ -3,7 +3,7 @@
 
 extern const int fx_scale;
 
-int fxtoi (int x);
+int fxtor (int x);
 int mult_fixeds (int x, int y);
 int div_fixeds (int x, int y);
 
