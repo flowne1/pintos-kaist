@@ -386,7 +386,7 @@ thread_try_preemption (void) {
 
 	// Ensure that ready_list is sorted by priority before popping thread from ready_list
 	list_sort (&ready_list, &cmp_priority_greater, NULL);
-	if (thread_current ()->priority < list_entry (list_front(&ready_list), struct thread, elem)->priority)
+	if (!intr_context () && thread_current ()->priority < list_entry (list_front(&ready_list), struct thread, elem)->priority)
 		thread_yield ();
 }
 
