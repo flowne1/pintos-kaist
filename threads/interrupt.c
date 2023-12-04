@@ -119,7 +119,7 @@ intr_get_level (void) {
 	   value off the stack into `flags'.  See [IA32-v2b] "PUSHF"
 	   and "POP" and [IA32-v3a] 5.8.1 "Masking Maskable Hardware
 	   Interrupts". */
-	asm volatile ("pushfq; popq %0" : "=g" (flags));
+	asm volatile ("pushfq; popq %0" : "=g" (flags)); // 인라인 어셈블리어
 
 	return flags & FLAG_IF ? INTR_ON : INTR_OFF;
 }
@@ -268,7 +268,7 @@ intr_yield_on_return (void) {
 	ASSERT (intr_context ());
 	yield_on_return = true;
 }
-
+
 /* 8259A Programmable Interrupt Controller. */
 
 /* Every PC has two 8259A Programmable Interrupt Controller (PIC)

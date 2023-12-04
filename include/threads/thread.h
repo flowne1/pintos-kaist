@@ -92,6 +92,17 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	// Privately added
+	int original_priority;				// Original priority of 
+	int64_t ticks_to_wakeup;			// Storing ticks till wakeup
+	struct list donor_list;				// List of priority donors for multiple donation
+	struct list_elem d_elem;			// List elem for 'donor_list'
+	struct lock *lock_waiting;			// Pointer of lock that a thread is waiting to acquire
+
+	int nice;							// 'Niceness' of thread to other threads
+	int fixed_recent_cpu;				// Stores fixed scaled ticks recently used by the thread, incrementing per each timer tick
+	struct list_elem t_elem;			// List elem for 'List of all threads'
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -125,6 +136,8 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+void thread_sleep (int64_t ticks); // privately added
+void thread_wakeup (int64_t ticks); // privately added
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -133,8 +146,20 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+void thread_try_preemption (void);	// privately added
+
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_donate_priority (void); // privately added
+void thread_update_priority (void); // privately added
+void thread_remove_donor (struct lock *lock); // privately added
+
+// for mlfqs
+void thread_recalc_priority (struct thread *t); // privately added
+void thread_recalc_priority_all (void); // privately added
+void thread_recalc_load_avg (void); // privately added
+void thread_recalc_recent_cpu (struct thread *t); // privately added
+void thread_recalc_recent_cpu_all (void); // privately added
 
 int thread_get_nice (void);
 void thread_set_nice (int);
@@ -142,5 +167,8 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+bool cmp_priority_greater (struct list_elem *e1, struct list_elem *e2); // privately added
+bool cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2); // privately added
 
 #endif /* threads/thread.h */

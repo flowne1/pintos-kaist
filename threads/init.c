@@ -106,6 +106,7 @@ main (void) {
 	serial_init_queue ();
 	timer_calibrate ();
 
+
 #ifdef FILESYS
 	/* Initialize file system. */
 	disk_init ();
@@ -117,6 +118,7 @@ main (void) {
 #endif
 
 	printf ("Boot complete.\n");
+
 
 	/* Run actions specified on kernel command line. */
 	run_actions (argv);

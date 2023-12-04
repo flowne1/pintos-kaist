@@ -7,6 +7,7 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "fixed.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -42,13 +43,13 @@ timer_init (void) {
 	outb (0x40, count & 0xff);
 	outb (0x40, count >> 8);
 
-	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+	intr_register_ext (0x20, timer_interrupt, "8254 Timer"); // 0x20 벡터에 timer_interrupt 함수를 등록한다. 타이머 인터럽트가 발생하면 timer_interrupt가 호출된다.
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
 void
 timer_calibrate (void) {
-	unsigned high_bit, test_bit;
+	unsigned high_bit, test_bit; 
 
 	ASSERT (intr_get_level () == INTR_ON);
 	printf ("Calibrating timer...  ");
@@ -91,10 +92,15 @@ timer_elapsed (int64_t then) {
 void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
-
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+
+	enum intr_level old_level = intr_disable ();
+
+	// make thread sleep for 'ticks' ticks using global ticks(=start)
+	thread_sleep (start + ticks);		
+	
+	intr_set_level (old_level);
+
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -120,11 +126,27 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	// When a timer interrupt occurs, wake up threads in sleep_list if their 'local ticks' is expired
+	thread_wakeup (ticks);
+
+	// For mlfqs
+	if (thread_mlfqs) {
+		// Incrememnt recent_cpu of current thread per timer tick
+		thread_current ()->fixed_recent_cpu += 1 * fx_scale;
+		// Recalculate load_avg, recent_cpu every 1 sec(= TIMER FREQ ticks)
+		if (ticks % TIMER_FREQ == 0) {
+			thread_recalc_load_avg ();
+			thread_recalc_recent_cpu_all ();
+		}
+		// Recalculate priority for all threads every 4th tick
+		if (ticks % 4 == 0)
+			thread_recalc_priority_all ();
+	}
 	thread_tick ();
 }
 
