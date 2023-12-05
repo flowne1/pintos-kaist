@@ -41,6 +41,42 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	switch (f->R.rax) {
+		case SYS_HALT:
+		case SYS_EXIT:
+		case SYS_FORK:
+		case SYS_EXEC:
+		case SYS_WAIT:
+		case SYS_CREATE:
+		case SYS_REMOVE:
+		case SYS_OPEN:
+		case SYS_FILESIZE:
+		case SYS_READ:
+		case SYS_WRITE:
+		case SYS_SEEK:
+		case SYS_TELL:
+		case SYS_CLOSE:
+			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			break;
+		case SYS_MMAP:
+		case SYS_MUNMAP:
+		case SYS_CHDIR:
+		case SYS_MKDIR:
+		case SYS_READDIR:
+		case SYS_ISDIR:
+		case SYS_INUMBER:
+		case SYS_SYMLINK:
+			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			break;
+		case SYS_DUP2:
+			break;
+		case SYS_MOUNT:
+		case SYS_UMOUNT:
+			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			break;
+		default:
+			PANIC ("Unkown syscall syscall_%ld", f->R.rax);
+	}
+	printf("system call!\n");
+	thread_exit();
 }
