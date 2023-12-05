@@ -27,6 +27,9 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+/* List of processes. */
+static struct list process_list;
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -55,6 +58,52 @@ process_create_initd (const char *file_name) {
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
+}
+
+static void
+init_process(struct task *task) {
+	ASSERT (task != NULL)
+
+	memset (task, 0, sizeof *task);
+
+	for (size_t i = 3; i < MAX_FD; i++) {
+		task->fds[i].closed = true;
+	}
+}
+
+static pid_t
+create_process(const char *file_name) {
+	char *fn_copy;
+	struct task *t;
+	pid_t pid;
+
+	t = palloc_get_page (PAL_ZERO);
+	if (t == NULL) {
+		return PID_ERROR;
+	}
+
+	fn_copy = malloc (strlen (file_name) + 1);
+	if (fn_copy == NULL) {
+		palloc_free_page(t);
+		return PID_ERROR;
+	}
+
+	strlcpy (fn_copy, file_name, strlen (file_name));
+	t->name = fn_copy;
+	pid = t->pid = allocate_pid ();
+	t->thread = create_thread (fn_copy, PRI_DEFAULT, process_exec, fn_copy);
+	init_process (t);
+
+	/* TODO: process_list init */
+	list_push_back (&process_list, &t->elem);
+
+	return pid;
+}
+
+pid_t
+allocate_pid() {
+	// TODO: allocate pid
+	return 1;
 }
 
 /* A thread function that launches first user process. */
