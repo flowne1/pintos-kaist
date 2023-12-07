@@ -15,7 +15,9 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
 #include "threads/mmu.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #ifdef VM
@@ -26,14 +28,19 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static pid_t allocate_pid ();
+static struct task *create_process (const char *file_name, struct thread *thread);
+/* Lock used by allocate_pid(). */
+static struct lock pid_lock;
 
 /* List of processes. */
 static struct list process_list;
 
-/* General process initializer for initd and other process. */
-static void
+/* Initialize process system */
+void
 process_init (void) {
-	struct thread *current = thread_current ();
+	lock_init (&pid_lock);
+	list_init (&process_list);
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -41,23 +48,68 @@ process_init (void) {
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
-tid_t
+pid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
-	tid_t tid;
+	struct thread *t;
+	struct task *task;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
 	if (fn_copy == NULL)
-		return TID_ERROR;
+		return PID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
-	if (tid == TID_ERROR)
-		palloc_free_page (fn_copy);
-	return tid;
+	t = create_thread (file_name, PRI_DEFAULT, initd, fn_copy);
+	if (t == NULL) {
+		palloc_free_page(fn_copy);
+		return PID_ERROR;
+	}
+	
+	task = create_process (file_name, t);
+	return task->pid;
+}
+
+static struct task *
+create_process (const char *file_name, struct thread* thread) {
+	char *fn_copy;
+	struct task *t;
+	pid_t pid;
+
+	t = palloc_get_page (PAL_ZERO);
+	if (t == NULL) {
+		return NULL;
+	}
+
+	fn_copy = malloc (strlen (file_name) + 1);
+	if (fn_copy == NULL) {
+		palloc_free_page (t);
+		return NULL;
+	}
+
+	init_process (t);
+	strlcpy (fn_copy, file_name, strlen (file_name));
+	t->name = fn_copy;
+	t->thread = thread;
+	pid = t->pid = allocate_pid ();
+	
+	list_push_back (&process_list, &t->elem);
+
+	return t;
+}
+
+static pid_t
+allocate_pid () {
+	static pid_t next_pid = 1;
+	pid_t pid;
+
+	lock_acquire (&pid_lock);
+	pid = next_pid++;
+	lock_release (&pid_lock);
+
+	return pid;
 }
 
 static void
@@ -72,38 +124,15 @@ init_process(struct task *task) {
 }
 
 static pid_t
-create_process(const char *file_name) {
-	char *fn_copy;
-	struct task *t;
+allocate_pid() {
+	static pid_t next_pid = 1;
 	pid_t pid;
 
-	t = palloc_get_page (PAL_ZERO);
-	if (t == NULL) {
-		return PID_ERROR;
-	}
-
-	fn_copy = malloc (strlen (file_name) + 1);
-	if (fn_copy == NULL) {
-		palloc_free_page(t);
-		return PID_ERROR;
-	}
-
-	strlcpy (fn_copy, file_name, strlen (file_name));
-	t->name = fn_copy;
-	pid = t->pid = allocate_pid ();
-	t->thread = create_thread (fn_copy, PRI_DEFAULT, process_exec, fn_copy);
-	init_process (t);
-
-	/* TODO: process_list init */
-	list_push_back (&process_list, &t->elem);
+	lock_acquire (&pid_lock);
+	pid = next_pid++;
+	lock_release (&pid_lock);
 
 	return pid;
-}
-
-pid_t
-allocate_pid() {
-	// TODO: allocate pid
-	return 1;
 }
 
 /* A thread function that launches first user process. */
@@ -112,9 +141,6 @@ initd (void *f_name) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-
-	process_init ();
-
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
@@ -122,11 +148,50 @@ initd (void *f_name) {
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
-tid_t
+pid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *thread;
+	struct task *task;
+
+	task = create_process (name, NULL);
+	task->parent = thread_current ();
+	memcpy (task->if_, if_, sizeof *if_);
+	thread = create_thread (name, PRI_DEFAULT, __do_fork, task);
+	
+	return task->pid;
+}
+
+struct task *
+process_find_by_pid (pid_t pid) {
+	struct list_elem *e = NULL;
+	struct task *t = NULL;
+	struct task *found = NULL;
+	for (e = list_begin (&process_list); e != list_end (&process_list); e = list_next (e)) {
+		t = list_entry (e, struct task, elem);
+		if (t->pid == pid) {
+			found = t;
+			break;
+		}
+	}
+
+	return found;
+}
+
+struct task *
+process_find_by_tid (tid_t tid) {
+	struct list_elem *e = NULL;
+	struct task *t = NULL;
+	struct task *found = NULL;
+	for (e = list_begin (&process_list); e != list_end (&process_list); e = list_next (e)) {
+		t = list_entry(e, struct task, elem);
+		if (t->thread != NULL && t->thread->tid == tid) {
+			found = t;
+			break;
+		}
+	}
+
+	return found;
 }
 
 #ifndef VM
@@ -168,17 +233,19 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
-	struct thread *parent = (struct thread *) aux;
+	struct task *task = (struct task *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = task->if_;
 	bool succ = true;
 
+	task->thread = current;
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-
+	memset (task->if_, 0x00, sizeof *task->if_);
+	
 	/* 2. Duplicate PT */
-	current->pml4 = pml4_create();
+	current->pml4 = pml4_create ();
 	if (current->pml4 == NULL)
 		goto error;
 
@@ -188,7 +255,7 @@ __do_fork (void *aux) {
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
-	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
+	if (!pml4_for_each (task->thread->pml4, duplicate_pte, task->thread))
 		goto error;
 #endif
 
@@ -197,8 +264,6 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
-	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
@@ -249,10 +314,13 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (pid_t child_pid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	for (;;) {
+
+	}
 	return -1;
 }
 
@@ -264,8 +332,15 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
-	process_cleanup ();
+	struct task *t = process_find_by_tid (curr->tid);
+	if (t == NULL) {
+		goto cleanup;
+	}
+	list_remove(&t->elem);
+	free (t->name);
+	palloc_free_page (t);
+cleanup:
+	process_cleanup();
 }
 
 /* Free the current process's resources. */

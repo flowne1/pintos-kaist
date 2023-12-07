@@ -194,11 +194,16 @@ thread_print_stats (void) {
 tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
-	return create_thread (name, priority, function, aux)->tid;
+	struct thread* t = create_thread (name, priority, function, aux);
+	if (t == NULL) {
+		return TID_ERROR;
+	}
+
+	return t->tid;
 }
 
 struct thread *
-create_thread(const char *name, int priority,
+create_thread (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
 	tid_t tid;
@@ -208,7 +213,7 @@ create_thread(const char *name, int priority,
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
-		return TID_ERROR;
+		return NULL;
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
