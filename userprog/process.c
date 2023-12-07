@@ -162,7 +162,7 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	char *file_name = f_name;	
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -335,10 +335,26 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	// Parse 'file_name' to argument tokens
+	char *argv_tokens[64];		// Number of tokens could be up to 64, as kernel can receive 128Bytes command lines
+	char fn_copy[128];			// Up to 128Bytes ... how about modify using malloc?
+	strlcpy (fn_copy, file_name, sizeof(fn_copy));
+
+	// Tokenize 'file_name' by space and add them into list
+	char *token, *save_ptr;
+	int cnt = 0;
+	int argc = 0;
+	for (token = strtok_r (&fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
+		argv_tokens[cnt] = token;
+		cnt++;
+	}
+	argc = cnt;
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	char *file_name_token = argv_tokens[0];
+	file = filesys_open (file_name_token);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", file_name_token);
 		goto done;
 	}
 
@@ -350,7 +366,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", file_name_token);
 		goto done;
 	}
 
@@ -414,9 +430,38 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	/* TODO: Implement argument passing (see project2/argument_passing.html). */
+	// Make list of argument address
+	char** address_argv[argc + 1];
+	address_argv[argc] = 0;
 
+	// Push all argument tokens to user stack
+	for (i = argc - 1; i >= 0; i--) {
+		int arglen = strlen (argv_tokens[i]) + 1;		// Find length of argument, including null sentinel
+		if_->rsp -= arglen;								// Make buffer for argument
+		strlcpy (if_->rsp, argv_tokens[i], arglen);		// Copy ith argument to if_->rsp
+		address_argv[i] = if_->rsp;						// Copy address of ith argument
+	}
+
+	// Align stack pointer to 8-byte boundary
+	if_->rsp -= if_->rsp % 8;
+
+	// Push address of arguments, in the proper order
+	for (i = argc; i >= 0; i--) {
+		if_->rsp -= sizeof(char *);
+		*(char **)if_->rsp = address_argv[i];
+	}
+
+	// Set rdi and rsi of if_
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp;
+
+	// Push fake return address 0
+	if_->rsp -= sizeof(void *);
+	*(void *) if_->rsp = 0;
+
+
+	
 	success = true;
 
 done:
