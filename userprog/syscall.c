@@ -85,7 +85,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	thread_exit();
 }
 
-int syscall_filesize (int fd) {
+int 
+syscall_filesize (int fd) {
 	struct thread *curr = thread_current ();
 	struct task *task = process_find_by_tid (curr->tid);
 	struct fd *fd_info = NULL;
@@ -105,6 +106,23 @@ int syscall_filesize (int fd) {
 	return file_length (fd_info->file);
 }
 
-int syscall_read (int fd, void *buffer, unsigned size) {
+int 
+syscall_read (int fd, void *buffer, unsigned size) {
 
+}
+bool 
+syscall_create (const char *file, unsigned initial_size) {
+	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
+	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
+	return;
+}
+
+bool 
+syscall_remove (const char *file) {
+	return;
+}
+
+int 
+syscall_open (const char *file) {
+	return;
 }

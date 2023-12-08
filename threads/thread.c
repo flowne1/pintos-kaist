@@ -231,10 +231,10 @@ create_thread (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-	thread_unblock (t); // note : default value of newly initiated thread's status is BLOCKED
+	thread_unblock (t);		// Note : default value of newly initiated thread's status is BLOCKED
 
-	// for priority scheduling
-	// try preemption
+	// For priority scheduling
+	// Try preemption
 	thread_try_preemption ();
 
 	return t;
@@ -645,7 +645,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
-	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);	// Note : Kernal stack pointer is set for thread, (4096 - 8)byte above *t
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
