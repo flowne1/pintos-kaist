@@ -44,3 +44,21 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	printf ("system call!\n");
 	thread_exit ();
 }
+
+// 
+bool 
+syscall_create (const char *file, unsigned initial_size) {
+	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
+	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
+	return;
+}
+
+bool 
+syscall_remove (const char *file) {
+	return;
+}
+
+int 
+syscall_open (const char *file) {
+	return;
+}
