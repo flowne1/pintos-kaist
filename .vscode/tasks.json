@@ -8,9 +8,54 @@
                 "cwd": "${workspaceFolder}/${input:project}"
             },
             "command": [
-                "make"
+                "make -j$(nproc)"
             ],
             "problemMatcher": []
+        },
+        {
+            "label": "dbg_userprog",
+            "type": "shell",
+            "command": [
+                "${workspaceFolder}/utils/pintos"
+            ],
+            "args": [
+                "--gdb",
+                "--fs-disk=10",
+                "-p",
+                "tests/userprog/${input:filename}:${input:filename}",
+                "--",
+                "-q",
+                "-f",
+                "run",
+                "${input:filename} ${input:args}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/${input:project}/build"
+            },
+            "dependsOn": [
+                "build_pintos"
+            ],
+            "isBackground": true,
+            // problem matcher hack
+            // If vscode starts supporting features in the future 
+            // that prevent it from waiting for preLaunchTask to complete, delete this code.
+            "problemMatcher": [
+                {
+                    "pattern": [
+                        {
+                            "regexp": ".",
+                            "file": 1,
+                            "location": 2,
+                            "message": 3
+                        }
+                    ],
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": ".",
+                        "endsPattern": ".",
+                    }
+                }
+            ]
         },
         {
             "label": "dbg_pintos",
@@ -22,7 +67,6 @@
                 "--gdb",
                 "--",
                 "-q",
-                "-mlfqs",
                 "run",
                 "${input:test}"
             ],
@@ -71,6 +115,16 @@
                 "filesys",
                 "vm"
             ]
+        },
+        {
+            "id": "filename",
+            "description": "Enter the user program to start.",
+            "type": "promptString"
+        },
+        {
+            "id": "args",
+            "description": "Enter arguments.",
+            "type": "promptString"
         }
     ]
 }
