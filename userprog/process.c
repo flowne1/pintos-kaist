@@ -334,6 +334,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+
 	// Declare variables for tokenizing arguments
 	char *argv_tokens[64];		// Number of tokens could be up to 64, as kernel can receive 128Bytes command lines
 	char fn_copy[128];			// Up to 128Bytes ... how about modify using malloc?
@@ -341,6 +342,14 @@ load (const char *file_name, struct intr_frame *if_) {
 	char *token, *save_ptr;
 	int cnt = 0;
 	int argc = 0;
+
+	// Tokenize 'file_name' by space and add them into list
+	for (token = strtok_r (&fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
+		argv_tokens[cnt] = token;
+		cnt++;
+	}
+	argc = cnt;
+
 	// Make list of argument address
 	char** address_argv[argc + 1];
 	address_argv[argc] = 0;
@@ -350,13 +359,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate (thread_current ());
-
-	// Tokenize 'file_name' by space and add them into list
-	for (token = strtok_r (&fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
-		argv_tokens[cnt] = token;
-		cnt++;
-	}
-	argc = cnt;
 
 	/* Open executable file. */
 	char *file_name_token = argv_tokens[0];
@@ -449,7 +451,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	// Align stack pointer to 8-byte boundary
 	if_->rsp -= if_->rsp % 8;
-
+	
 	// Push address of arguments, in the proper order
 	for (i = argc; i >= 0; i--) {
 		if_->rsp -= sizeof(char *);
