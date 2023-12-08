@@ -4,8 +4,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
+#include "userprog/process.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
+#include "filesys/file.h"
 #include "intrinsic.h"
 
 void syscall_entry (void);
@@ -41,11 +43,73 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	switch (f->R.rax) {
+		case SYS_HALT:
+		case SYS_EXIT:
+		case SYS_FORK:
+		case SYS_EXEC:
+		case SYS_WAIT:
+		case SYS_CREATE:
+		case SYS_REMOVE:
+		case SYS_OPEN:
+		case SYS_FILESIZE:
+			break;
+		case SYS_READ:
+			break;
+		case SYS_WRITE:
+		case SYS_SEEK:
+		case SYS_TELL:
+		case SYS_CLOSE:
+			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			break;
+		case SYS_MMAP:
+		case SYS_MUNMAP:
+		case SYS_CHDIR:
+		case SYS_MKDIR:
+		case SYS_READDIR:
+		case SYS_ISDIR:
+		case SYS_INUMBER:
+		case SYS_SYMLINK:
+			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			break;
+		case SYS_DUP2:
+			break;
+		case SYS_MOUNT:
+		case SYS_UMOUNT:
+			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			break;
+		default:
+			PANIC ("Unkown syscall syscall_%ld", f->R.rax);
+	}
+	printf("system call!\n");
+	thread_exit();
 }
 
-// 
+int 
+syscall_filesize (int fd) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	struct fd *fd_info = NULL;
+	if (fd < 0 || fd >= MAX_FD) {
+		return -1;
+	}
+
+	fd_info = &task->fds[fd];
+	if (fd_info->closed) {
+		return -1;
+	}
+
+	if (fd_info->file == NULL) {
+		return -1;
+	}
+
+	return file_length (fd_info->file);
+}
+
+int 
+syscall_read (int fd, void *buffer, unsigned size) {
+
+}
 bool 
 syscall_create (const char *file, unsigned initial_size) {
 	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
