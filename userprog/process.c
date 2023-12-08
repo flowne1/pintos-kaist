@@ -31,6 +31,8 @@ static void initd (void *f_name);
 static void __do_fork (void *);
 static pid_t allocate_pid ();
 static struct task *create_process (const char *file_name, struct thread *thread);
+static void init_process (struct task *task);
+
 /* Lock used by allocate_pid(). */
 static struct lock pid_lock;
 
@@ -114,7 +116,7 @@ allocate_pid () {
 }
 
 static void
-init_process(struct task *task) {
+init_process (struct task *task) {
 	ASSERT (task != NULL)
 
 	memset (task, 0, sizeof *task);
@@ -122,18 +124,6 @@ init_process(struct task *task) {
 	for (size_t i = 3; i < MAX_FD; i++) {
 		task->fds[i].closed = true;
 	}
-}
-
-static pid_t
-allocate_pid() {
-	static pid_t next_pid = 1;
-	pid_t pid;
-
-	lock_acquire (&pid_lock);
-	pid = next_pid++;
-	lock_release (&pid_lock);
-
-	return pid;
 }
 
 /* A thread function that launches first user process. */
