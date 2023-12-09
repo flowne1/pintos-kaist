@@ -249,6 +249,7 @@ syscall_open (const char *file) {
 	
 	lock_release (&filesys_lock);
 	return;
+}
 
 static int
 syscall_write (int fd, void *buffer, unsigned size) {
