@@ -7,7 +7,7 @@
 typedef int pid_t;
 typedef int fd_t;
 
-#define MAX_FD 256
+#define MAX_FD 64
 #define PID_ERROR ((pid_t)-1)
 #define FD_ERROR ((fd_t)-1)
 
@@ -18,14 +18,16 @@ struct fd {
 };
 
 struct task {
-    char *name;
-    pid_t pid;
-    struct thread *thread;
-    struct thread *parent;
-    struct list_elem elem;
-    struct fd fds[MAX_FD];
-    struct intr_frame *if_;
-    int exit_code;
+    char *name;             /* Name of the process. */
+    pid_t pid;              /* Process ID. */
+    struct thread *thread;  /* The thread currently running the task. */
+    struct thread *parent;  /* Parent Process */
+    struct list_elem elem;  /* List element for PCB */
+    struct fd fds[MAX_FD];  /* File descriptor table. */
+    struct intr_frame *if_; /* Temporary interrupt frame. */
+    int exit_code;          /* Exit Codes. */
+    void *args;             /* Temporary argument for deterministic
+                               creation of processes. */
 };
 
 void process_init (void);

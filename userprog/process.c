@@ -27,7 +27,7 @@
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
-static void initd (void *f_name);
+static void initd (void *task);
 static void __do_fork (void *);
 static pid_t allocate_pid ();
 static struct task *create_process (const char *file_name, struct thread *thread);
@@ -65,13 +65,14 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	t = create_thread (file_name, PRI_DEFAULT, initd, fn_copy);
+	task = create_process (file_name, NULL);
+	task->args = fn_copy;
+	t = create_thread (file_name, PRI_DEFAULT, initd, task);
 	if (t == NULL) {
 		palloc_free_page(fn_copy);
 		return PID_ERROR;
 	}
 	
-	task = create_process (file_name, t);
 	return task->pid;
 }
 
@@ -142,11 +143,13 @@ init_process (struct task *task) {
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) {
+initd (void *task) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-	if (process_exec (f_name) < 0)
+	struct task *t = (struct task *) task;
+	t->thread = thread_current ();
+	if (process_exec (t->args) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -347,7 +350,7 @@ process_exit (void) {
 	}
 	printf ("%s: exit(%d)\n", t->name, t->exit_code);
 	list_remove(&t->elem);
-	//free (t->name);
+	free (t->name);
 	palloc_free_page (t);
 cleanup:
 	process_cleanup();

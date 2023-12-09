@@ -19,7 +19,7 @@ static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned pos);
 static unsigned syscall_tell (int fd);
-static void close (int fd); 
+static void syscall_close (int fd); 
 static int64_t get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 
@@ -54,6 +54,8 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax) {
 		case SYS_HALT:
+			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			break;
 		case SYS_EXIT:
 			syscall_exit (f->R.rdi);
 			break;
@@ -75,9 +77,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = syscall_write (f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_SEEK:
+			syscall_seek (f->R.rdi, f->R.rsi);
+			break;
 		case SYS_TELL:
+			f->R.rax = syscall_tell (f->R.rdi);
+			break;
 		case SYS_CLOSE:
-			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			syscall_close (f->R.rdi);
 			break;
 		case SYS_MMAP:
 		case SYS_MUNMAP:
@@ -226,7 +232,7 @@ syscall_seek (int fd, unsigned pos) {
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
-		return -1;
+		return;
 	}
 
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
@@ -256,7 +262,7 @@ syscall_tell (int fd) {
 }
 
 static void
-close (int fd) {
+syscall_close (int fd) {
 	struct thread *curr = thread_current ();
 	struct task *task = process_find_by_tid (curr->tid);
 	if (task == NULL) {
