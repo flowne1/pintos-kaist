@@ -7,7 +7,7 @@
 typedef int pid_t;
 typedef int fd_t;
 
-#define MAX_FD 256
+#define MAX_FD 64
 #define PID_ERROR ((pid_t)-1)
 #define FD_ERROR ((fd_t)-1)
 

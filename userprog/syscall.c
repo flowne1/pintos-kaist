@@ -9,9 +9,14 @@
 #include "threads/flags.h"
 #include "filesys/file.h"
 #include "intrinsic.h"
+#include "threads/synch.h"
+#include "filesys/filesys.h"
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+
+struct lock filesys_lock;	// Privately added
 
 /* System call.
  *
@@ -37,13 +42,18 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	// Init lock for file-related syscalls
+	lock_init (&filesys_lock);
 }
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
-	switch (f->R.rax) {
+	int syscall_number = f->R.rax;
+
+	switch (syscall_number) {
 		case SYS_HALT:
 		case SYS_EXIT:
 		case SYS_FORK:
@@ -52,6 +62,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_CREATE:
 		case SYS_REMOVE:
 		case SYS_OPEN:
+			break;
 		case SYS_FILESIZE:
 			break;
 		case SYS_READ:
@@ -60,7 +71,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_SEEK:
 		case SYS_TELL:
 		case SYS_CLOSE:
-			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			// PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
 			break;
 		case SYS_MMAP:
 		case SYS_MUNMAP:
@@ -70,16 +81,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_ISDIR:
 		case SYS_INUMBER:
 		case SYS_SYMLINK:
-			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			// PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
 			break;
 		case SYS_DUP2:
 			break;
 		case SYS_MOUNT:
 		case SYS_UMOUNT:
-			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			// PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
 			break;
 		default:
-			PANIC ("Unkown syscall syscall_%ld", f->R.rax);
+			printf("syscall default\n");
+			// PANIC ("Unkown syscall syscall_%ld", f->R.rax);
 	}
 	printf("system call!\n");
 	thread_exit();
@@ -110,19 +122,54 @@ int
 syscall_read (int fd, void *buffer, unsigned size) {
 
 }
+
+// Private note : system call number in %rax, arguments in %rdi, %rsi, %rdx, %r10, %r8, %r9
+
+
 bool 
 syscall_create (const char *file, unsigned initial_size) {
-	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
-	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
-	return;
+	lock_acquire (&filesys_lock);
+
+	// Call filesys_create to create file
+	bool success = filesys_create (file, initial_size);
+
+	lock_release (&filesys_lock);
+
+	return success;
 }
 
 bool 
 syscall_remove (const char *file) {
-	return;
+	lock_acquire (&filesys_lock);
+
+	// Call filesys_remove to remove file
+	bool success = filesys_remove (file);
+
+	lock_release (&filesys_lock);
+
+	return success;
 }
 
 int 
 syscall_open (const char *file) {
+	// Opens the file called file. Returns a nonnegative integer handle called a "file descriptor" (fd), or -1 if the file could not be opened. 
+	// File descriptors numbered 0 and 1 are reserved for the console: fd 0 (STDIN_FILENO) is standard input, fd 1 (STDOUT_FILENO) is standard output.
+	// The open system call will never return either of these file descriptors, which are valid as system call arguments only as explicitly described below.
+	// Each process has an independent set of file descriptors. File descriptors are inherited by child processes. 
+	// When a single file is opened more than once, whether by a single process or different processes, each open returns a new file descriptor. 
+	// Different file descriptors for a single file are closed independently in separate calls to close and they do not share a file position. 
+	// You should follow the linux scheme, which returns integer starting from zero, to do the extra.
+	lock_acquire (&filesys_lock);
+
+	// Call filesys_open to open file
+	struct file *f = filesys_open (file);
+	if (f == NULL) {
+		return -1;
+	}
+
+	// If opening file is successful, allocate fd to the file
+	
+	
+	lock_release (&filesys_lock);
 	return;
 }

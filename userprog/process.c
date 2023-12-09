@@ -121,8 +121,10 @@ init_process (struct task *task) {
 
 	memset (task, 0, sizeof *task);
 
-	for (size_t i = 3; i < MAX_FD; i++) {
-		task->fds[i].closed = true;
+	for (size_t i = 0; i < MAX_FD; i++) {
+		if (i >= 3)
+			task->fds[i].closed = true;
+		task->fds[i].fd = i;
 	}
 }
 
@@ -580,7 +582,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	*(void **) if_->rsp = 0;
 
 	// Call hex_dump () for debugging
-	hex_dump (if_->rsp, if_->rsp, USER_STACK - (uint64_t)if_->rsp, true);
+	// hex_dump (if_->rsp, if_->rsp, USER_STACK - (uint64_t)if_->rsp, true);
 	
 	success = true;
 
