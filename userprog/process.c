@@ -27,7 +27,7 @@
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
-static void initd (void *f_name);
+static void initd (void *task);
 static void __do_fork (void *);
 static pid_t allocate_pid ();
 static struct task *create_process (const char *file_name, struct thread *thread);
@@ -65,13 +65,14 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	t = create_thread (file_name, PRI_DEFAULT, initd, fn_copy);
+	task = create_process (file_name, NULL);
+	task->args = fn_copy;
+	t = create_thread (file_name, PRI_DEFAULT, initd, task);
 	if (t == NULL) {
 		palloc_free_page(fn_copy);
 		return PID_ERROR;
 	}
 	
-	task = create_process (file_name, t);
 	return task->pid;
 }
 
@@ -80,24 +81,31 @@ create_process (const char *file_name, struct thread* thread) {
 	char *fn_copy;
 	struct task *t;
 	pid_t pid;
+	char *args_begin;
+	size_t name_len;
 
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL) {
 		return NULL;
 	}
+	init_process (t);
+	
+	args_begin = strchr (file_name, ' ');
+	name_len = args_begin - file_name + 1;
+	if (args_begin == NULL) {
+		name_len = strlen (file_name) + 1;
+	}
 
-	fn_copy = malloc (strlen (file_name) + 1);
+	fn_copy = malloc (name_len + 1);
 	if (fn_copy == NULL) {
 		palloc_free_page (t);
 		return NULL;
 	}
 
-	init_process (t);
-	strlcpy (fn_copy, file_name, strlen (file_name));
+	strlcpy (fn_copy, file_name, name_len);
 	t->name = fn_copy;
 	t->thread = thread;
 	pid = t->pid = allocate_pid ();
-	
 	list_push_back (&process_list, &t->elem);
 
 	return t;
@@ -119,22 +127,31 @@ static void
 init_process (struct task *task) {
 	ASSERT (task != NULL)
 
-	memset (task, 0, sizeof *task);
+	task->name = NULL;
+	task->elem.next = NULL;
+	task->elem.prev = NULL;
+	task->if_ = NULL;
+	task->parent = NULL;
+	task->thread = NULL;
 
 	for (size_t i = 0; i < MAX_FD; i++) {
 		if (i >= 3)
 			task->fds[i].closed = true;
 		task->fds[i].fd = i;
 	}
+
+	task->exit_code = 0;
 }
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) {
+initd (void *task) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-	if (process_exec (f_name) < 0)
+	struct task *t = (struct task *) task;
+	t->thread = thread_current ();
+	if (process_exec (t->args) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -333,6 +350,7 @@ process_exit (void) {
 	if (t == NULL) {
 		goto cleanup;
 	}
+	printf ("%s: exit(%d)\n", t->name, t->exit_code);
 	list_remove(&t->elem);
 	free (t->name);
 	palloc_free_page (t);
@@ -558,7 +576,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Implement argument passing (see project2/argument_passing.html). */
 	// Push all argument tokens to user stack
 	for (i = argc - 1; i >= 0; i--) {
-		int arglen = strlen (argv_tokens[i]) + 1;		// Find length of argument, including null sentinel
+		int arglen = strlen (argv_tokens[i]) + 1; 		// Find length of argument, including null sentinel
 		if_->rsp -= arglen;								// Make buffer for argument
 		strlcpy (if_->rsp, argv_tokens[i], arglen);		// Copy ith argument to if_->rsp
 		address_argv[i] = if_->rsp;						// Copy address of ith argument
