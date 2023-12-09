@@ -134,8 +134,10 @@ init_process (struct task *task) {
 	task->parent = NULL;
 	task->thread = NULL;
 
-	for (size_t i = 3; i < MAX_FD; i++) {
-		task->fds[i].closed = true;
+	for (size_t i = 0; i < MAX_FD; i++) {
+		if (i >= 3)
+			task->fds[i].closed = true;
+		task->fds[i].fd = i;
 	}
 
 	task->exit_code = 0;
