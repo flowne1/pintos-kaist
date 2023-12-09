@@ -71,7 +71,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_EXEC:
 		case SYS_WAIT:
 		case SYS_CREATE:
+			syscall_create (f->R.rdi, f->R.rsi);
+			break;
 		case SYS_REMOVE:
+			syscall_remove (f->R.rdi);
+			break;
 		case SYS_OPEN:
 			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
@@ -124,23 +128,6 @@ syscall_exit (int status) {
 
 	task->exit_code = status;
 	thread_exit ();
-}
-
-bool 
-syscall_create (const char *file, unsigned initial_size) {
-	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
-	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
-	return;
-}
-
-bool 
-syscall_remove (const char *file) {
-	return;
-}
-
-int 
-syscall_open (const char *file) {
-	return;
 }
 
 int 
@@ -326,7 +313,7 @@ syscall_close (int fd) {
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
-		return -1;
+		return;
 	}
 	
 	if (task->fds[fd].closed) {
