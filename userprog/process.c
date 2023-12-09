@@ -80,7 +80,8 @@ create_process (const char *file_name, struct thread* thread) {
 	char *fn_copy;
 	struct task *t;
 	pid_t pid;
-	
+	char *args_begin;
+	size_t name_len;
 
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL) {
@@ -88,14 +89,19 @@ create_process (const char *file_name, struct thread* thread) {
 	}
 	init_process (t);
 	
-	fn_copy = malloc (strlen (file_name) + 1);
+	args_begin = strchr (file_name, ' ');
+	name_len = args_begin - file_name + 1;
+	if (args_begin == NULL) {
+		name_len = strlen (file_name) + 1;
+	}
+
+	fn_copy = malloc (name_len + 1);
 	if (fn_copy == NULL) {
 		palloc_free_page (t);
 		return NULL;
 	}
 
-	strlcpy (fn_copy, file_name, strlen (file_name) + 1);
-	*strchr (fn_copy, ' ') = '\0';
+	strlcpy (fn_copy, file_name, name_len);
 	t->name = fn_copy;
 	t->thread = thread;
 	pid = t->pid = allocate_pid ();
@@ -341,7 +347,7 @@ process_exit (void) {
 	}
 	printf ("%s: exit(%d)\n", t->name, t->exit_code);
 	list_remove(&t->elem);
-	free (t->name);
+	//free (t->name);
 	palloc_free_page (t);
 cleanup:
 	process_cleanup();
@@ -565,7 +571,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Implement argument passing (see project2/argument_passing.html). */
 	// Push all argument tokens to user stack
 	for (i = argc - 1; i >= 0; i--) {
-		int arglen = strlen (argv_tokens[i]) + 1;		// Find length of argument, including null sentinel
+		int arglen = strlen (argv_tokens[i]) + 1; 		// Find length of argument, including null sentinel
 		if_->rsp -= arglen;								// Make buffer for argument
 		strlcpy (if_->rsp, argv_tokens[i], arglen);		// Copy ith argument to if_->rsp
 		address_argv[i] = if_->rsp;						// Copy address of ith argument
@@ -589,7 +595,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	*(void **) if_->rsp = 0;
 
 	// Call hex_dump () for debugging
-	hex_dump (if_->rsp, if_->rsp, USER_STACK - (uint64_t)if_->rsp, true);
+	// hex_dump (if_->rsp, if_->rsp, USER_STACK - (uint64_t)if_->rsp, true);
 	
 	success = true;
 
