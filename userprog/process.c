@@ -339,6 +339,7 @@ process_exit (void) {
 	if (t == NULL) {
 		goto cleanup;
 	}
+	printf ("%s: exit(%d)\n", t->name, t->exit_code);
 	list_remove(&t->elem);
 	free (t->name);
 	palloc_free_page (t);
