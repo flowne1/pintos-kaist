@@ -161,6 +161,10 @@ syscall_read (int fd, void *buffer, unsigned size) {
 	if (task == NULL) {
 		return -1;
 	}
+	
+	if (fd < 0 || fd >= MAX_FD) {
+		return -1;
+	}
 
 	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
 		return -1;
@@ -193,6 +197,10 @@ syscall_write (int fd, void *buffer, unsigned size) {
 		return -1;
 	}
 
+	if (fd < 0 || fd >= MAX_FD) {
+		return -1;
+	}
+
 	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
 		return -1;
 	}
@@ -217,6 +225,10 @@ syscall_seek (int fd, unsigned pos) {
 		return;
 	}
 
+	if (fd < 0 || fd >= MAX_FD) {
+		return -1;
+	}
+
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
 		return;
 	}
@@ -229,6 +241,10 @@ syscall_tell (int fd) {
 	struct thread *curr = thread_current ();
 	struct task *task = process_find_by_tid (curr->tid);
 	if (task == NULL) {
+		return -1;
+	}
+
+	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
 	}
 
@@ -247,6 +263,10 @@ close (int fd) {
 		return;
 	}
 
+	if (fd < 0 || fd >= MAX_FD) {
+		return -1;
+	}
+	
 	if (task->fds[fd].closed) {
 		return;
 	}
