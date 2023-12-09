@@ -148,17 +148,19 @@ page_fault (struct intr_frame *f) {
 
 	/* Count page faults. */
 	page_fault_cnt++;
-
+	
+	if (!user) {
+		f->rip = (uintptr_t) f->R.rax;
+		f->R.rax = UINTPTR_MAX;
+		return;
+	}
+	
 	/* If the fault is true fault, show info and exit. */
 	printf ("Page fault at %p: %s error %s page in %s context.\n",
 			fault_addr,
 			not_present ? "not present" : "rights violation",
 			write ? "writing" : "reading",
 			user ? "user" : "kernel");
-			
-	if (!is_user_vaddr (fault_addr)) {
-		thread_exit ();
-	}
 	kill (f);
 }
 

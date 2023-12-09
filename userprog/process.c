@@ -80,24 +80,25 @@ create_process (const char *file_name, struct thread* thread) {
 	char *fn_copy;
 	struct task *t;
 	pid_t pid;
+	
 
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL) {
 		return NULL;
 	}
-
+	init_process (t);
+	
 	fn_copy = malloc (strlen (file_name) + 1);
 	if (fn_copy == NULL) {
 		palloc_free_page (t);
 		return NULL;
 	}
 
-	init_process (t);
-	strlcpy (fn_copy, file_name, strlen (file_name));
+	strlcpy (fn_copy, file_name, strlen (file_name) + 1);
+	*strchr (fn_copy, ' ') = '\0';
 	t->name = fn_copy;
 	t->thread = thread;
 	pid = t->pid = allocate_pid ();
-	
 	list_push_back (&process_list, &t->elem);
 
 	return t;
@@ -119,11 +120,18 @@ static void
 init_process (struct task *task) {
 	ASSERT (task != NULL)
 
-	memset (task, 0, sizeof *task);
+	task->name = NULL;
+	task->elem.next = NULL;
+	task->elem.prev = NULL;
+	task->if_ = NULL;
+	task->parent = NULL;
+	task->thread = NULL;
 
 	for (size_t i = 3; i < MAX_FD; i++) {
 		task->fds[i].closed = true;
 	}
+
+	task->exit_code = 0;
 }
 
 /* A thread function that launches first user process. */
@@ -331,6 +339,7 @@ process_exit (void) {
 	if (t == NULL) {
 		goto cleanup;
 	}
+	printf ("%s: exit(%d)\n", t->name, t->exit_code);
 	list_remove(&t->elem);
 	free (t->name);
 	palloc_free_page (t);

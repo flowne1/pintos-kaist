@@ -1,6 +1,8 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <console.h>
+#include "devices/input.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -12,6 +14,14 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+static void syscall_exit (int status);
+static int syscall_read (int fd, void *buffer, unsigned size);
+static int syscall_write (int fd, void *buffer, unsigned size);
+static void syscall_seek (int fd, unsigned pos);
+static unsigned syscall_tell (int fd);
+static void close (int fd); 
+static int64_t get_user (const uint8_t *uaddr);
+static bool put_user (uint8_t *udst, uint8_t byte);
 
 /* System call.
  *
@@ -42,25 +52,32 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
 	switch (f->R.rax) {
 		case SYS_HALT:
 		case SYS_EXIT:
+			syscall_exit (f->R.rdi);
+			break;
 		case SYS_FORK:
 		case SYS_EXEC:
 		case SYS_WAIT:
 		case SYS_CREATE:
 		case SYS_REMOVE:
 		case SYS_OPEN:
+			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			break;
 		case SYS_FILESIZE:
+			f->R.rax = syscall_filesize (f->R.rdi);
 			break;
 		case SYS_READ:
+			f->R.rax = syscall_read (f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
+			f->R.rax = syscall_write (f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
 		case SYS_SEEK:
 		case SYS_TELL:
 		case SYS_CLOSE:
-			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		case SYS_MMAP:
 		case SYS_MUNMAP:
@@ -70,19 +87,46 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_ISDIR:
 		case SYS_INUMBER:
 		case SYS_SYMLINK:
-			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		case SYS_DUP2:
 			break;
 		case SYS_MOUNT:
 		case SYS_UMOUNT:
-			PANIC ("Unimplemented syscall syscall_%ld", f->R.rax);
+			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		default:
-			PANIC ("Unkown syscall syscall_%ld", f->R.rax);
+			PANIC ("Unkown syscall syscall_%lld", f->R.rax);
 	}
-	printf("system call!\n");
-	thread_exit();
+}
+
+static void
+syscall_exit (int status) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	if (task == NULL) {
+		return;
+	}
+
+	task->exit_code = status;
+	thread_exit ();
+}
+
+bool 
+syscall_create (const char *file, unsigned initial_size) {
+	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
+	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
+	return;
+}
+
+bool 
+syscall_remove (const char *file) {
+	return;
+}
+
+int 
+syscall_open (const char *file) {
+	return;
 }
 
 int 
@@ -90,6 +134,10 @@ syscall_filesize (int fd) {
 	struct thread *curr = thread_current ();
 	struct task *task = process_find_by_tid (curr->tid);
 	struct fd *fd_info = NULL;
+	if (task == NULL) {
+		return -1;
+	}
+
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
 	}
@@ -106,23 +154,142 @@ syscall_filesize (int fd) {
 	return file_length (fd_info->file);
 }
 
-int 
+static int 
 syscall_read (int fd, void *buffer, unsigned size) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	if (task == NULL) {
+		return -1;
+	}
 
-}
-bool 
-syscall_create (const char *file, unsigned initial_size) {
-	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
-	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
-	return;
+	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
+		return -1;
+	}
+
+	if (fd == 0 && !task->fds[fd].closed) {
+		for (size_t i = 0; i < size; i++) {
+			bool result = put_user (buffer + i, input_getc());
+			if (!result) {
+				task->exit_code = 139;
+				thread_exit ();
+			}
+		}
+
+		return size;
+	}
+
+	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
+		return -1;
+	}
+
+	return file_read (task->fds[fd].file, buffer, size);
 }
 
-bool 
-syscall_remove (const char *file) {
-	return;
+static int
+syscall_write (int fd, void *buffer, unsigned size) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
+		return -1;
+	}
+
+	if (fd == 1 && !task->fds[fd].closed) {
+		putbuf(buffer, size);
+		return size;
+	}
+
+	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
+		return -1;
+	}
+
+	return file_write (task->fds[fd].file, buffer, size);
 }
 
-int 
-syscall_open (const char *file) {
-	return;
+static void
+syscall_seek (int fd, unsigned pos) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	if (task == NULL) {
+		return;
+	}
+
+	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
+		return;
+	}
+
+	file_seek (task->fds[fd].file, pos);
+}
+
+static unsigned
+syscall_tell (int fd) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
+		return -1;
+	}
+
+	return file_tell (task->fds[fd].file);
+}
+
+static void
+close (int fd) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	if (task == NULL) {
+		return;
+	}
+
+	if (task->fds[fd].closed) {
+		return;
+	}
+
+	if (fd <= 2 && fd >= 0) {
+		task->fds[fd].closed = true;
+		return;
+	}
+
+	if (task->fds[fd].file == NULL) {
+		return;
+	}
+
+	file_close (task->fds[fd].file);
+	task->fds[fd].closed = true;
+	task->fds[fd].file = NULL;
+}
+
+/* Reads a byte at user virtual address UADDR.
+ * UADDR must be below KERN_BASE.
+ * Returns the byte value if successful, -1 if a segfault
+ * occurred. */
+static int64_t
+get_user (const uint8_t *uaddr) {
+    int64_t result;
+    __asm __volatile (
+    "movabsq $done_get, %0\n"
+    "movzbq %1, %0\n"
+    "done_get:\n"
+    : "=&a" (result) : "m" (*uaddr));
+    return result;
+}
+
+/* Writes BYTE to user address UDST.
+ * UDST must be below KERN_BASE.
+ * Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte) {
+    int64_t error_code;
+    __asm __volatile (
+    "movabsq $done_put, %0\n"
+    "movb %b2, %1\n"
+    "done_put:\n"
+    : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+    return error_code != -1;
 }

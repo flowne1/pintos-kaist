@@ -25,6 +25,7 @@ struct task {
     struct list_elem elem;
     struct fd fds[MAX_FD];
     struct intr_frame *if_;
+    int exit_code;
 };
 
 void process_init (void);
