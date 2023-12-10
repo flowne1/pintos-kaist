@@ -13,6 +13,7 @@
 #include "intrinsic.h"
 #include "threads/synch.h"
 #include "filesys/filesys.h"
+#include "threads/vaddr.h"
 
 
 void syscall_entry (void);
@@ -25,6 +26,8 @@ static unsigned syscall_tell (int fd);
 static void syscall_close (int fd); 
 static int64_t get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
+static int allocate_fd (struct file *file);
+static bool is_valid_address (void *addr);
 
 struct lock filesys_lock;	// Privately added
 
@@ -71,9 +74,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_EXEC:
 		case SYS_WAIT:
 		case SYS_CREATE:
+			f->R.rax = syscall_create (f->R.rdi, f->R.rsi);
+			break;
 		case SYS_REMOVE:
+			f->R.rax = syscall_remove (f->R.rdi);
+			break;
 		case SYS_OPEN:
-			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			f->R.rax = syscall_open (f->R.rdi);
 			break;
 		case SYS_FILESIZE:
 			f->R.rax = syscall_filesize (f->R.rdi);
@@ -110,7 +117,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		default:
-			PANIC ("Unkown syscall syscall_%lld", f->R.rax);
+			PANIC ("Unknown syscall syscall_%lld", f->R.rax);
 	}
 }
 
@@ -188,6 +195,10 @@ syscall_read (int fd, void *buffer, unsigned size) {
 
 bool 
 syscall_create (const char *file, unsigned initial_size) {
+	if (!is_valid_address (file)) {
+		syscall_exit (-1);
+	}
+
 	lock_acquire (&filesys_lock);
 
 	// Call filesys_create to create file
@@ -200,25 +211,25 @@ syscall_create (const char *file, unsigned initial_size) {
 
 bool 
 syscall_remove (const char *file) {
+	if (!is_valid_address (file)) {
+		syscall_exit (-1);
+	}
+
 	lock_acquire (&filesys_lock);
 
 	// Call filesys_remove to remove file
 	bool success = filesys_remove (file);
 
 	lock_release (&filesys_lock);
-
 	return success;
 }
 
 int 
 syscall_open (const char *file) {
-	// Opens the file called file. Returns a nonnegative integer handle called a "file descriptor" (fd), or -1 if the file could not be opened. 
-	// File descriptors numbered 0 and 1 are reserved for the console: fd 0 (STDIN_FILENO) is standard input, fd 1 (STDOUT_FILENO) is standard output.
-	// The open system call will never return either of these file descriptors, which are valid as system call arguments only as explicitly described below.
-	// Each process has an independent set of file descriptors. File descriptors are inherited by child processes. 
-	// When a single file is opened more than once, whether by a single process or different processes, each open returns a new file descriptor. 
-	// Different file descriptors for a single file are closed independently in separate calls to close and they do not share a file position. 
-	// You should follow the linux scheme, which returns integer starting from zero, to do the extra.
+	if (!is_valid_address (file)) {
+		syscall_exit (-1);
+	}
+
 	lock_acquire (&filesys_lock);
 
 	// Call filesys_open to open file
@@ -227,11 +238,14 @@ syscall_open (const char *file) {
 		return -1;
 	}
 
-	// If opening file is successful, allocate fd to the file
-	
+	// If opening file is successful, allocate fd to opened file
+	int fd = allocate_fd (f);
+	if (fd < 0) {
+		return -1;
+	}
 	
 	lock_release (&filesys_lock);
-	return 0;
+	return fd;
 }
 
 static int
@@ -357,4 +371,31 @@ put_user (uint8_t *udst, uint8_t byte) {
     "done_put:\n"
     : "=&a" (error_code), "=m" (*udst) : "q" (byte));
     return error_code != -1;
+}
+
+// Allocate empty fd to given file
+static int
+allocate_fd (struct file *file) {
+	struct task *curr_task = process_find_by_tid (thread_current ()->tid);
+	
+	// Search emtpy fd, start from 3
+	int fd = -1;
+	for (int i = 3; i <= MAX_FD; i++) {
+		if (curr_task->fds[i].closed) {			// If any closed fd is found
+			curr_task->fds[i].closed = false;	// Change status of fd to 'open'
+			curr_task->fds[i].file = file;		// Set given fild into fd
+			fd = i;								// Get fd number
+			break;
+		}
+	}
+
+	return fd;
+}
+
+// Validates given address and if not, call exit(-1)
+// 'Valid address' means 1. not NULL 2. located in user area
+static bool
+is_valid_address (void *addr) {
+	return addr != NULL && is_user_vaddr (addr) 
+	&& pml4_get_page(thread_current ()->pml4, addr) != NULL;
 }
