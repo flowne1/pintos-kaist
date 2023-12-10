@@ -126,23 +126,6 @@ syscall_exit (int status) {
 	thread_exit ();
 }
 
-bool 
-syscall_create (const char *file, unsigned initial_size) {
-	// Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
-	// Creating a new file does not open it: opening the new file is a separate operation which would require a open system call.
-	return;
-}
-
-bool 
-syscall_remove (const char *file) {
-	return;
-}
-
-int 
-syscall_open (const char *file) {
-	return;
-}
-
 int 
 syscall_filesize (int fd) {
 	struct thread *curr = thread_current ();
@@ -248,7 +231,7 @@ syscall_open (const char *file) {
 	
 	
 	lock_release (&filesys_lock);
-	return;
+	return 0;
 }
 
 static int
@@ -326,7 +309,7 @@ syscall_close (int fd) {
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
-		return -1;
+		return;
 	}
 	
 	if (task->fds[fd].closed) {
