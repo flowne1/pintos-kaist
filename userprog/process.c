@@ -302,7 +302,7 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
-
+	
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -483,6 +483,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 	argc = cnt;
 
+
 	// Make list of argument address
 	char** address_argv[argc + 1];
 	address_argv[argc] = 0;
@@ -598,9 +599,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	// Push fake return address 0
 	if_->rsp -= sizeof(void *);
 	*(void **) if_->rsp = 0;
-
-	// Call hex_dump () for debugging
-	// hex_dump (if_->rsp, if_->rsp, USER_STACK - (uint64_t)if_->rsp, true);
 	
 	success = true;
 
