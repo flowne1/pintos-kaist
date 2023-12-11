@@ -171,10 +171,11 @@ syscall_read (int fd, void *buffer, unsigned size) {
 	}
 
 	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
-		return -1;
+		task->exit_code = -1;
+		thread_exit ();
 	}
 
-	if (fd == 0 && !task->fds[fd].closed) {
+	if (task->fds[fd].fd == 0 && !task->fds[fd].closed) {
 		for (size_t i = 0; i < size; i++) {
 			bool result = put_user (buffer + i, input_getc());
 			if (!result) {
@@ -256,15 +257,16 @@ syscall_write (int fd, void *buffer, unsigned size) {
 		return -1;
 	}
 
+	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
+		task->exit_code = -1;
+		thread_exit ();
+	}
+
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
 	}
 
-	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
-		return -1;
-	}
-
-	if (fd == 1 && !task->fds[fd].closed) {
+	if (task->fds[fd].fd == 1 && !task->fds[fd].closed) {
 		putbuf(buffer, size);
 		return size;
 	}

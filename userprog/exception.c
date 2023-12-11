@@ -4,6 +4,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "userprog/process.h"
 #include "intrinsic.h"
 
 /* Number of page faults processed. */
@@ -154,7 +155,14 @@ page_fault (struct intr_frame *f) {
 		f->R.rax = UINTPTR_MAX;
 		return;
 	}
-	
+
+	struct task *t = process_find_by_tid (thread_current ()->tid);
+	/* Just kill the process. */
+	if (t != NULL) {
+		t->exit_code = -1;
+		thread_exit ();
+	}
+
 	/* If the fault is true fault, show info and exit. */
 	printf ("Page fault at %p: %s error %s page in %s context.\n",
 			fault_addr,
