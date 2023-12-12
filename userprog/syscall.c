@@ -3,6 +3,7 @@
 #include <syscall-nr.h>
 #include <console.h>
 #include "devices/input.h"
+#include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -14,11 +15,16 @@
 #include "threads/synch.h"
 #include "filesys/filesys.h"
 #include "threads/vaddr.h"
-
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 static void syscall_exit (int status);
+static void syscall_halt (void);
+static int syscall_fork (const char *thread_name, struct intr_frame *if_);
+static int syscall_exec (const char *cmd_line);
+static int syscall_wait (pid_t pid);
+static int syscall_filesize (int fd);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned pos);
@@ -65,14 +71,20 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax) {
 		case SYS_HALT:
-			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			syscall_halt ();
 			break;
 		case SYS_EXIT:
 			syscall_exit (f->R.rdi);
 			break;
 		case SYS_FORK:
+			f->R.rax = syscall_fork (f->R.rdi, f);
+			break;
 		case SYS_EXEC:
+			f->R.rax = syscall_exec (f->R.rdi);
+			break;
 		case SYS_WAIT:
+			f->R.rax = syscall_wait (f->R.rdi);
+			break;
 		case SYS_CREATE:
 			f->R.rax = syscall_create (f->R.rdi, f->R.rsi);
 			break;
@@ -111,6 +123,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		case SYS_DUP2:
+			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		case SYS_MOUNT:
 		case SYS_UMOUNT:
@@ -119,6 +132,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		default:
 			PANIC ("Unknown syscall syscall_%lld", f->R.rax);
 	}
+}
+
+static void
+syscall_halt () {
+	power_off ();
 }
 
 static void
@@ -133,7 +151,50 @@ syscall_exit (int status) {
 	thread_exit ();
 }
 
-int 
+static int
+syscall_fork (const char *thread_name, struct intr_frame *if_) {
+	return process_fork (thread_name, if_);
+}
+
+static int
+syscall_exec (const char *cmd_line) {
+	struct thread *curr = thread_current ();
+	struct task *task = process_find_by_tid (curr->tid);
+	char* fn_copy;
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (get_user (cmd_line) == -1) {
+		task->exit_code = -1;
+		thread_exit ();	
+	}
+
+	file_close (task->executable);
+	task->executable = NULL;
+	fn_copy = palloc_get_page (0);
+	if (fn_copy == NULL) {
+		task->exit_code = -1;
+		thread_exit ();
+	}
+
+	strlcpy (fn_copy, cmd_line, PGSIZE);
+
+	if (process_exec (fn_copy) < 0) {
+		task->exit_code = -1;
+		thread_exit ();
+	}
+
+	NOT_REACHED ();
+	return 0;
+}
+
+static int
+syscall_wait (pid_t pid) {
+	return process_wait (pid);
+}
+
+static int 
 syscall_filesize (int fd) {
 	struct thread *curr = thread_current ();
 	struct task *task = process_find_by_tid (curr->tid);
@@ -190,8 +251,11 @@ syscall_read (int fd, void *buffer, unsigned size) {
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
 		return -1;
 	}
-
-	return file_read (task->fds[fd].file, buffer, size);
+	
+	lock_acquire (&filesys_lock);
+	off_t ret = file_read (task->fds[fd].file, buffer, size);
+	lock_release (&filesys_lock);
+	return ret;
 }
 
 bool 
@@ -231,10 +295,10 @@ syscall_open (const char *file) {
 		syscall_exit (-1);
 	}
 
-	lock_acquire (&filesys_lock);
-
 	// Call filesys_open to open file
+	lock_acquire (&filesys_lock);
 	struct file *f = filesys_open (file);
+	lock_release (&filesys_lock);
 	if (f == NULL) {
 		return -1;
 	}
@@ -242,10 +306,10 @@ syscall_open (const char *file) {
 	// If opening file is successful, allocate fd to opened file
 	int fd = allocate_fd (f);
 	if (fd < 0) {
+		file_close (f);
 		return -1;
 	}
 	
-	lock_release (&filesys_lock);
 	return fd;
 }
 
@@ -275,7 +339,10 @@ syscall_write (int fd, void *buffer, unsigned size) {
 		return -1;
 	}
 
-	return file_write (task->fds[fd].file, buffer, size);
+	lock_acquire (&filesys_lock);
+	off_t ret = file_write (task->fds[fd].file, buffer, size);
+	lock_release (&filesys_lock);
+	return ret;
 }
 
 static void
@@ -293,8 +360,9 @@ syscall_seek (int fd, unsigned pos) {
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
 		return;
 	}
-
+	lock_acquire (&filesys_lock);
 	file_seek (task->fds[fd].file, pos);
+	lock_release (&filesys_lock);
 }
 
 static unsigned
@@ -312,8 +380,10 @@ syscall_tell (int fd) {
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
 		return -1;
 	}
-
-	return file_tell (task->fds[fd].file);
+	lock_acquire (&filesys_lock);
+	off_t ret = file_tell (task->fds[fd].file);
+	lock_release (&filesys_lock);
+	return ret;
 }
 
 static void
@@ -340,8 +410,9 @@ syscall_close (int fd) {
 	if (task->fds[fd].file == NULL) {
 		return;
 	}
-
+	lock_acquire (&filesys_lock);
 	file_close (task->fds[fd].file);
+	lock_release (&filesys_lock);
 	task->fds[fd].closed = true;
 	task->fds[fd].file = NULL;
 }
