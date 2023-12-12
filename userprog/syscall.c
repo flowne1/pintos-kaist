@@ -18,12 +18,22 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+// Process-related syscalls
+static void syscall_halt (void);
 static void syscall_exit (int status);
+static pid_t syscall_fork (const char *thread_name, struct intr_frame *f);
+static int syscall_exec (const char *cmd_line);
+static int syscall_wait (pid_t pid);
+// File-related syscalls
+static bool syscall_create (const char *file, unsigned initial_size);
+static bool syscall_remove (const char *file);
+static int syscall_open (const char *file);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned pos);
 static unsigned syscall_tell (int fd);
-static void syscall_close (int fd); 
+static void syscall_close (int fd);
+// Functions for implementing syscalls
 static int64_t get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 static int allocate_fd (struct file *file);
@@ -62,17 +72,20 @@ syscall_init (void) {
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	switch (f->R.rax) {
 		case SYS_HALT:
-			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			syscall_halt ();
 			break;
 		case SYS_EXIT:
 			syscall_exit (f->R.rdi);
 			break;
 		case SYS_FORK:
+			f->R.rax = syscall_fork (f->R.rdi, f);
+			break;
 		case SYS_EXEC:
 		case SYS_WAIT:
+			f->R.rax = syscall_wait (f->R.rdi);
 		case SYS_CREATE:
 			f->R.rax = syscall_create (f->R.rdi, f->R.rsi);
 			break;
@@ -122,6 +135,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 static void
+syscall_halt (void) {
+	power_off ();
+}
+
+static void
 syscall_exit (int status) {
 	struct thread *curr = thread_current ();
 	struct task *task = process_find_by_tid (curr->tid);
@@ -131,6 +149,18 @@ syscall_exit (int status) {
 
 	task->exit_code = status;
 	thread_exit ();
+}
+
+static pid_t 
+syscall_fork (const char *thread_name, struct intr_frame *f) {
+	return process_fork (thread_name, f);
+}
+
+static int syscall_exec (const char *cmd_line);
+
+static int 
+syscall_wait (pid_t pid) {
+	return process_wait (pid);
 }
 
 int 
@@ -200,10 +230,8 @@ syscall_create (const char *file, unsigned initial_size) {
 	}
 
 	lock_acquire (&filesys_lock);
-
 	// Call filesys_create to create file
 	bool success = filesys_create (file, initial_size);
-
 	lock_release (&filesys_lock);
 
 	return success;
@@ -216,11 +244,10 @@ syscall_remove (const char *file) {
 	}
 
 	lock_acquire (&filesys_lock);
-
 	// Call filesys_remove to remove file
 	bool success = filesys_remove (file);
-
 	lock_release (&filesys_lock);
+
 	return success;
 }
 
@@ -231,20 +258,20 @@ syscall_open (const char *file) {
 	}
 
 	lock_acquire (&filesys_lock);
-
 	// Call filesys_open to open file
 	struct file *f = filesys_open (file);
 	if (f == NULL) {
+		lock_release (&filesys_lock);
 		return -1;
 	}
-
 	// If opening file is successful, allocate fd to opened file
 	int fd = allocate_fd (f);
 	if (fd < 0) {
+		lock_release (&filesys_lock);
 		return -1;
 	}
-	
 	lock_release (&filesys_lock);
+
 	return fd;
 }
 
@@ -381,9 +408,9 @@ allocate_fd (struct file *file) {
 	// Search emtpy fd, start from 3
 	int fd = -1;
 	for (int i = 3; i <= MAX_FD; i++) {
-		if (curr_task->fds[i].closed) {			// If any closed fd is found
-			curr_task->fds[i].closed = false;	// Change status of fd to 'open'
-			curr_task->fds[i].file = file;		// Set given fild into fd
+		if (curr_task->fds[i].closed) {			// If any closed fd is found,
+			curr_task->fds[i].closed = false;	// Change status of the fd to 'open'
+			curr_task->fds[i].file = file;		// Set given fild into the fd
 			fd = i;								// Get fd number
 			break;
 		}
@@ -392,10 +419,11 @@ allocate_fd (struct file *file) {
 	return fd;
 }
 
-// Validates given address and if not, call exit(-1)
-// 'Valid address' means 1. not NULL 2. located in user area
+// Validates given virtual address 
+// 'Valid address' means 1. not NULL 2. located in user area 3. mapped properly
 static bool
 is_valid_address (void *addr) {
-	return addr != NULL && is_user_vaddr (addr) 
+	return addr != NULL 
+	&& is_user_vaddr (addr) 
 	&& pml4_get_page(thread_current ()->pml4, addr) != NULL;
 }

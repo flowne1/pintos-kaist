@@ -141,6 +141,12 @@ init_process (struct task *task) {
 	}
 
 	task->exit_code = 0;
+
+	// Init child_list
+	list_init (&task->child_list);
+	// Init semaphore for fork
+	task->sema_fork.value = 0;
+	list_init (&task->sema_fork.waiters);
 }
 
 /* A thread function that launches first user process. */
@@ -159,18 +165,46 @@ initd (void *task) {
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 pid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	struct thread *thread;
-	struct task *task;
+process_fork (const char *name, struct intr_frame *if_) {
+	// Get current process
+	struct task *curr_task = process_find_by_tid (thread_current ()->tid);
+	if (!curr_task) {
+		return PID_ERROR;
+	}
 
-	task = create_process (name, NULL);
-	task->parent = thread_current ();
-	memcpy (task->if_, if_, sizeof *if_);
-	thread = create_thread (name, PRI_DEFAULT, __do_fork, task);
+	// Create child process
+	struct task *child_task = create_process (name, NULL);
+	if (!child_task) {
+		return PID_ERROR;
+	}
+
+	// Set if_ of child_task to given if
+	child_task->if_ = if_;
+
+	// Set relationship between parent and child
+	list_push_back (&curr_task->child_list, &child_task->c_elem);
+	child_task->parent = curr_task;
+
+	// Do fork
+	struct thread *child_thrd = create_thread (name, PRI_DEFAULT, __do_fork, child_task);
+	if (!child_thrd) {
+		return PID_ERROR;
+	}
+
+	// Wait for forking to be done
+	sema_down (&child_task->sema_fork);
 	
-	return task->pid;
+	// Return pid of child_task
+	return child_task->pid;
 }
+
+// /* Clones the current process as `name`. Returns the new process's thread id, or
+//  * TID_ERROR if the thread cannot be created. */
+// tid_t
+// process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+// 	/* Clone current thread to new thread.*/
+// 	return thread_create (name, PRI_DEFAULT, __do_fork, thread_current ());
+// }
 
 struct task *
 process_find_by_pid (pid_t pid) {
@@ -243,19 +277,19 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
-	struct task *task = (struct task *) aux;
+	struct task *child = (struct task *) aux;
+	struct task *parent = child->parent;
+	struct thread *parent_thrd = parent->thread;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if = task->if_;
+	struct intr_frame *parent_if = parent->if_;		// Get if_ of parent process
 	bool succ = true;
 
-	task->thread = current;
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-	memset (task->if_, 0x00, sizeof *task->if_);
-	
+
 	/* 2. Duplicate PT */
-	current->pml4 = pml4_create ();
+	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
 
@@ -265,7 +299,7 @@ __do_fork (void *aux) {
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
-	if (!pml4_for_each (task->thread->pml4, duplicate_pte, task->thread))
+	if (!pml4_for_each (parent_thrd->pml4, duplicate_pte, parent_thrd))
 		goto error;
 #endif
 
@@ -274,6 +308,25 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+	
+	// Duplicate FD table of parent process to its child
+	for (int i = 3; i <= MAX_FD; i++) {
+		if (!parent->fds[i].closed) {
+			child->fds[i].closed = false;
+			child->fds[i].file = file_duplicate (parent->fds[i].file);
+		}
+	}
+	
+	// Set %rax to 0, so that child will get return value 0
+	if_.R.rax = 0;
+
+	// Set initial thread for child_task
+	child->thread = thread_current ();
+
+	process_init ();
+
+	// Sema up to wake up parent process
+	sema_up (&child->sema_fork); 
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
@@ -324,28 +377,33 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (pid_t child_pid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+process_wait (pid_t child_pid) {
+	struct task *curr_task = process_find_by_tid (thread_current ()->tid);
+	struct task *child_task = process_find_by_pid (child_pid);
 
-	int start_tick = timer_ticks ();
-	int end_tick = start_tick + 1000; // wait for 10 sec
-	while (timer_ticks () <= end_tick) {
-
-
+	if (child_task->parent != curr_task) {
+		return -1;
 	}
-	return -1;
+
+	sema_down ();
+
+	// int start_tick = timer_ticks ();
+	// int end_tick = start_tick + 1000; // wait for 10 sec
+	// while (timer_ticks () <= end_tick) {
+
+
+	// }
+	// return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	struct thread *curr = thread_current ();
 	struct task *t = process_find_by_tid (curr->tid);
 	if (t == NULL) {
 		goto cleanup;

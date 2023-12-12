@@ -93,7 +93,7 @@ struct thread {
 	int priority;                       /* Priority. */
 
 	// Privately added
-	int original_priority;				// Original priority of 
+	int original_priority;				// Original priority of thread
 	int64_t ticks_to_wakeup;			// Storing ticks till wakeup
 	struct list donor_list;				// List of priority donors for multiple donation
 	struct list_elem d_elem;			// List elem for 'donor_list'

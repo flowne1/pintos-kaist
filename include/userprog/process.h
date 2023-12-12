@@ -3,6 +3,7 @@
 
 #include "filesys/file.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 
 typedef int pid_t;
 typedef int fd_t;
@@ -18,16 +19,18 @@ struct fd {
 };
 
 struct task {
-    char *name;             /* Name of the process. */
-    pid_t pid;              /* Process ID. */
-    struct thread *thread;  /* The thread currently running the task. */
-    struct thread *parent;  /* Parent Process */
-    struct list_elem elem;  /* List element for PCB */
-    struct fd fds[MAX_FD];  /* File descriptor table. */
-    struct intr_frame *if_; /* Temporary interrupt frame. */
-    int exit_code;          /* Exit Codes. */
-    void *args;             /* Temporary argument for deterministic
-                               creation of processes. */
+    char *name;                     /* Name of the process. */
+    pid_t pid;                      /* Process ID. */
+    struct thread *thread;          /* The thread currently running the task. */
+    struct task *parent;            /* Parent Process */
+    struct list_elem elem;          /* List element for PCB */
+    struct fd fds[MAX_FD];          /* File descriptor table. */
+    struct intr_frame *if_;         /* Temporary interrupt frame. */
+    int exit_code;                  /* Exit Codes. */
+    void *args;                     /* Temporary argument for deterministic creation of processes. */
+    struct list child_list;         // List of child
+    struct list_elem c_elem;        // List elem for child_list
+    struct semaphore sema_fork;     // Semaphore for fork
 };
 
 void process_init (void);

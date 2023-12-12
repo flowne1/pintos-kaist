@@ -121,9 +121,9 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
-	// additional inits
+	// Additional inits
 	list_init (&sleep_list);
-	list_init (&thread_list);
+	list_init (&thread_list); 
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();

@@ -9,6 +9,7 @@
         "syscall.h": "c",
         "main.h": "c",
         "malloc.h": "c",
-        "*.inc": "c"
+        "*.inc": "c",
+        "init.h": "c"
     }
 }
