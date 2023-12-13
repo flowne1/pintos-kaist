@@ -35,6 +35,7 @@ pid_t process_create_initd (const char *file_name);
 pid_t process_fork (const char *name, struct intr_frame *if_);
 struct task *process_find_by_pid (pid_t pid);
 struct task *process_find_by_tid (tid_t tid); 
+static struct task * create_process (const char *file_name, struct thread* thread);
 int process_exec (void *f_name);
 int process_wait (pid_t);
 void process_exit (void);
