@@ -4,7 +4,7 @@ userprog/gdt.o: ../../userprog/gdt.c ../../include/userprog/gdt.h \
  ../../include/threads/thread.h ../../include/lib/kernel/list.h \
  ../../include/lib/stdbool.h ../../include/lib/stddef.h \
  ../../include/threads/interrupt.h ../../include/filesys/file.h \
- ../../include/filesys/off_t.h ../../include/threads/mmu.h \
- ../../include/threads/pte.h ../../include/threads/vaddr.h \
- ../../include/threads/palloc.h ../../include/intrinsic.h \
- ../../include/threads/mmu.h
+ ../../include/filesys/off_t.h ../../include/threads/synch.h \
+ ../../include/threads/mmu.h ../../include/threads/pte.h \
+ ../../include/threads/vaddr.h ../../include/threads/palloc.h \
+ ../../include/intrinsic.h ../../include/threads/mmu.h

@@ -31,7 +31,7 @@ static struct list ready_list;
 // List of sleeping threads 
 static struct list sleep_list;
 // List of ALL threads
-static struct list thread_list;
+struct list thread_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -225,6 +225,11 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	// When creating thread, set relationship between parent and child
+	struct thread *parent = thread_current ();
+	t->parent = parent;
+	list_push_back (&parent->child_list, &t->c_elem);
+
 	/* Add to run queue. */
 	thread_unblock (t);		// note : default value of newly initiated thread's status is BLOCKED
 
@@ -306,10 +311,9 @@ thread_unblock (struct thread *t) {
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
 
-	// for priority scheduling
-	// insertion strategy should be modified properly : maintain the ready queue in descending order of priority
+	// For priority scheduling
+	// Insertion strategy should be modified properly : maintain the ready queue in descending order of priority
 	list_insert_ordered (&ready_list, &(t->elem), &cmp_priority_greater, NULL);
-	// list_push_back (&ready_list, &t->elem);
 	
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
@@ -655,14 +659,19 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->fixed_recent_cpu = 0;
 	list_push_back (&thread_list, &t->t_elem);
 
-	// Privately added for syscalls
-	t->next_fd = 2;				// FD 0, 1 is for std I/O
-	// Initialize FD table
-	t->fdt[0].in_use = true;
+	// Privately added for userprogs
+	t->file_running = NULL;
+	sema_init (&t->fork_sema, 0);			// Init fork_sema
+	sema_init (&t->wait_sema, 0);			// Init wait_sema
+	sema_init (&t->free_sema, 0);			// Init free_sema
+	list_init (&t->fork_sema.waiters);
+	t->fdt[0].in_use = true;				// Init FD table
 	t->fdt[1].in_use = true;
 	for (int i = 2; i < MAX_FD; i++) {
 		t->fdt[i].in_use = false;
 	}
+	list_init(&t->child_list);				// Init list of child
+	t->exit_status = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -858,4 +867,21 @@ cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2) {
 	struct thread *t1 = list_entry (e1, struct thread, d_elem);
 	struct thread *t2 = list_entry (e2, struct thread, d_elem);
 	return (t1->priority > t2->priority);
+}
+
+// Given tid, return matching thread
+struct thread *
+thread_find_by_tid (tid_t tid) {
+	struct thread *t;
+	struct list_elem *t_e = list_begin (&thread_list);
+
+	while (t_e != list_end (&thread_list)) {
+		t = list_entry (t_e, struct thread, t_elem);
+		if (t->tid == tid) {
+			return t;
+		}
+		t_e = list_next (t_e);
+	}
+
+	return tid;;
 }

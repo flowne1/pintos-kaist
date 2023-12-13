@@ -7,6 +7,6 @@ userprog/exception.o: ../../userprog/exception.c \
  ../../include/threads/loader.h ../../include/threads/interrupt.h \
  ../../include/threads/thread.h ../../include/lib/kernel/list.h \
  ../../include/filesys/file.h ../../include/filesys/off_t.h \
- ../../include/intrinsic.h ../../include/threads/mmu.h \
- ../../include/threads/pte.h ../../include/threads/vaddr.h \
- ../../include/userprog/syscall.h
+ ../../include/threads/synch.h ../../include/intrinsic.h \
+ ../../include/threads/mmu.h ../../include/threads/pte.h \
+ ../../include/threads/vaddr.h ../../include/userprog/syscall.h

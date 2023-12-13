@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "filesys/file.h"
+#include "threads/synch.h"
 
 #ifdef VM
 #include "vm/vm.h"
@@ -114,10 +115,17 @@ struct thread {
 	int fixed_recent_cpu;				// Stores fixed scaled ticks recently used by the thread, incrementing per each timer tick
 	struct list_elem t_elem;			// List elem for 'List of all threads'
 
-	// Privately added for syscalls
+	// Privately added for userprog
 	struct fd_table fdt[MAX_FD];		// FD table
-	int next_fd;						// 
 	struct file *file_running;
+	struct intr_frame parent_if;		// if_ info of current thread, be passed to child
+	struct semaphore fork_sema;			// Semaphore used for fork
+	struct semaphore wait_sema;			// Semaphore used for wait
+	struct semaphore free_sema;
+	struct thread *parent;				// Parent of the process(thread?)
+	struct list child_list;				// List of forked child
+	struct list_elem c_elem;			// List elem for 'child_list'
+	int exit_status;					// Exit status of process
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -185,5 +193,9 @@ void do_iret (struct intr_frame *tf);
 
 bool cmp_priority_greater (struct list_elem *e1, struct list_elem *e2); // privately added
 bool cmp_priority_greater_dona (struct list_elem *e1, struct list_elem *e2); // privately added
+struct thread *thread_find_by_tid (tid_t tid);	//privately added
+
+// For userprog
+struct list thread_list;
 
 #endif /* threads/thread.h */

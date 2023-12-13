@@ -7,6 +7,7 @@
         "main.h": "c",
         "lib.h": "c",
         "stdbool.h": "c",
-        "file.h": "c"
+        "file.h": "c",
+        "stddef.h": "c"
     }
 }

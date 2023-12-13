@@ -79,10 +79,21 @@ initd (void *f_name) {
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+process_fork (const char *name, struct intr_frame *if_) {
+	struct thread *curr = thread_current ();
+	// Save if_ info in current thread
+	memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
+
+	tid_t child_tid = thread_create (name, PRI_DEFAULT, __do_fork, curr);
+	if (!child_tid) {
+		return TID_ERROR;
+	}
+
+	// Sema down parent process till __do_fork finishes its work
+	struct thread *child = thread_find_by_tid (child_tid);
+	sema_down(&child->fork_sema);
+
+	return child_tid;
 }
 
 #ifndef VM
@@ -97,21 +108,34 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if (is_kernel_vaddr (va)) {
+		return true;
+	}
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
+	if (!parent_page) {
+		return false;
+	}
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page (PAL_USER);
+	if (!newpage) {
+		return false;
+	}
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy (newpage, parent_page, PGSIZE);
+	writable = is_writable (pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -127,11 +151,13 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &parent->parent_if;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	// Set return value 0, following convention of syscall fork
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -154,12 +180,28 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
+	// Duplicate FD table of parent, skipping STD I/O
+	for (int i = 2; i < MAX_FD; i ++) {
+		if (parent->fdt[i].in_use) {	// If FD of parent is in use
+			current->fdt[i].in_use = true;
+			current->fdt[i].file = file_duplicate (parent->fdt[i].file);
+		}
+	}
+
+	// // When creating thread, set relationship between parent and child
+	// current->parent = parent;
+	// list_push_back (&parent->child_list, &current->c_elem);
+
 	process_init ();
+
+	// When fork is done, sema up to wake up parent process
+	sema_up (&current->fork_sema);
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
+	sema_up (&current->fork_sema);
 	thread_exit ();
 }
 
@@ -205,14 +247,30 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_pid) {
-	int start_tick = timer_ticks ();
-	int end_tick = start_tick + 500; // wait for 5 sec
-	while (timer_ticks () <= end_tick) {
+process_wait (tid_t child_tid) {
+	// int start_tick = timer_ticks ();
+	// int end_tick = start_tick + 500; // wait for 5 sec
+	// while (timer_ticks () <= end_tick) {
 
 
+	// }
+	// return -1;
+	struct thread *parent = thread_current ();
+	struct thread *child = thread_find_by_tid (child_tid);
+	// Return if child is not found, or not parent-child relationship
+	if (!child || child->parent != parent) {
+		return -1;
 	}
-	return -1;
+
+	sema_down (&child->wait_sema);
+	
+	// After process_exit() of child is done, get exit status of child
+	int exit_status = child->exit_status;
+	list_remove (&child->c_elem);
+
+	sema_up (&child->free_sema);
+
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -223,7 +281,21 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-	file_close (curr->file_running);	// Close running file
+	// Close all opened file
+	for (int i = 2; i < MAX_FD; i++) {
+		if (curr->fdt[i].in_use) {
+			file_close (curr->fdt[i].file);
+		}
+	}
+	// Close running file
+	file_close (curr->file_running);
+
+	// Signal waiting parent to wake up
+	sema_up (&curr->wait_sema);
+	// Sleep?
+	sema_down (&curr->free_sema);
+
+	// Clean up process
 	process_cleanup ();
 }
 
@@ -336,12 +408,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	struct ELF ehdr;
 	struct file *file = NULL;
 	off_t file_ofs;
-	bool success = false;
 	int i;
 
 	// Declare variables for tokenizing arguments
-	char *argv_tokens[64];		// Number of tokens could be up to 64, as kernel can receive 128Bytes command lines
-	char fn_copy[128];			// Up to 128Bytes ... how about modify using malloc?
+	char *argv_tokens[32];		// Number of tokens could be up to 64, limit its length to 32 save stack
+	char fn_copy[128];			
 	strlcpy (fn_copy, file_name, sizeof(fn_copy));
 	char *token, *save_ptr;
 	int cnt = 0;
@@ -351,6 +422,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (token = strtok_r (&fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
 		argv_tokens[cnt] = token;
 		cnt++;
+		if (cnt >= 32) {
+			break;
+		}
 	}
 	argc = cnt;
 
@@ -367,7 +441,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	char *file_name_token = argv_tokens[0];
-	file = filesys_open (file_name_token);
+	file = filesys_open (argv_tokens[0]);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name_token);
 		goto done;
@@ -478,10 +552,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	return true;
 
 done:
-	/* We arrive here whether the load is successful or not. */
+	// We arrive here whether the load is FAIL
 	file_close (file);
 	
-	return success;
+	return false;
 }
 
 

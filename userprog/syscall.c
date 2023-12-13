@@ -10,6 +10,7 @@
 #include "threads/synch.h"
 #include "filesys/filesys.h"
 #include "threads/palloc.h"
+#include "userprog/process.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -73,15 +74,15 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_EXIT:
 			syscall_exit (f->R.rdi);
 			break;
-		// case SYS_FORK:
-		// 	f->R.rax = syscall_fork (f->R.rdi, f);
-		// 	break;
+		case SYS_FORK:
+			f->R.rax = syscall_fork (f->R.rdi, f);
+			break;
 		case SYS_EXEC:
 			f->R.rax = syscall_exec (f->R.rdi);
 			break;
-		// case SYS_WAIT:
-		// 	f->R.rax = syscall_wait (f->R.rdi);
-		// 	break;
+		case SYS_WAIT:
+			f->R.rax = syscall_wait (f->R.rdi);
+			break;
 		case SYS_CREATE:
 			f->R.rax = syscall_create (f->R.rdi, f->R.rsi);
 			break;
@@ -134,11 +135,15 @@ syscall_halt (void) {
 void 
 syscall_exit (int status) {
 	struct thread *curr = thread_current ();
+	curr->exit_status = status;
 	printf("%s: exit(%d)\n", curr->name, status);
 	thread_exit ();
 }
 
-// static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
+static tid_t 
+syscall_fork (const char *thread_name, struct intr_frame *f) {
+	return process_fork (thread_name, f);
+}
 
 static int 
 syscall_exec (const char *cmd_line) {
@@ -158,7 +163,10 @@ syscall_exec (const char *cmd_line) {
 	}
 }
 
-// static int syscall_wait (tid_t tid);
+static int 
+syscall_wait (tid_t tid) {
+	process_wait (tid);
+}
 
 static bool 
 syscall_create (const char *file, unsigned initial_size) {
@@ -205,10 +213,6 @@ syscall_open (const char *file) {
 	if (fd == -1) {
 		file_close (file);
 	}
-	// // If opened running file, deny write
-	// if (strcmp (thread_name (), file) == 0) {
-	// 	file_deny_write (f);
-	// }
 
 	lock_release (&filesys_lock);
 	return fd;
