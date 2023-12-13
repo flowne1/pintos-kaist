@@ -2,12 +2,10 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include <console.h>
-#include <string.h>
 #include "devices/input.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
-#include "threads/palloc.h"
 #include "userprog/process.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
@@ -21,10 +19,8 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 static void syscall_exit (int status);
-static int syscall_fork (void);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, void *buffer, unsigned size);
-static int syscall_wait(pid_t pid);
 static void syscall_seek (int fd, unsigned pos);
 static unsigned syscall_tell (int fd);
 static void syscall_close (int fd); 
@@ -75,11 +71,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			syscall_exit (f->R.rdi);
 			break;
 		case SYS_FORK:
-			f->R.rax = syscall_fork();
-			break;
 		case SYS_EXEC:
 		case SYS_WAIT:
-			f->R.rax = syscall_wait(f->R.rdi);
 		case SYS_CREATE:
 			f->R.rax = syscall_create (f->R.rdi, f->R.rsi);
 			break;
@@ -200,48 +193,6 @@ syscall_read (int fd, void *buffer, unsigned size) {
 
 	return file_read (task->fds[fd].file, buffer, size);
 }
-
-static int
-syscall_fork (void) {
-    struct thread *curr = thread_current();
-    struct task *current_process = process_find_by_tid(curr->tid);
-    
-    // Create a new process by duplicating the current process
-    struct task *child_process = create_process(current_process->name, current_process->args);
-
-    if (child_process != NULL) {
-        // Copy the address space of the parent process to the child process
-        // Note: This needs to be handled carefully to avoid unwanted sharing
-        // Consider allocating a new address space for the child process
-
-        // Set the child process as a separate execution unit
-        init_process(child_process);
-
-        // Create a new thread within the child process
-        struct thread *new_thread = create_thread(child_process->name, PRI_DEFAULT, child_process,child_process->args);
-
-        if (new_thread != NULL) {
-            // Update the parent-child relationship
-            child_process->parent = current_process;
-            add_to_process_list(child_process);
-
-            // Return the child process ID to the parent
-            return child_process->pid;
-        } else {
-            // Handle failure to create a new thread
-            palloc_free_page(child_process);
-            return TID_ERROR;
-        }
-    } else {
-        // Handle failure to create a new process
-        return TID_ERROR;
-    }
-}
-
-static int 
-syscall_wait (pid_t pid) {
-	return process_wait(pid);
-};
 
 bool 
 syscall_create (const char *file, unsigned initial_size) {
