@@ -156,11 +156,10 @@ page_fault (struct intr_frame *f) {
 		return;
 	}
 
-	struct task *t = process_find_by_tid (thread_current ()->tid);
+	struct task *t = task_find_by_tid (thread_tid ());
 	/* Just kill the process. */
 	if (t != NULL) {
-		t->exit_code = -1;
-		thread_exit ();
+		task_exit (-1);
 	}
 
 	/* If the fault is true fault, show info and exit. */

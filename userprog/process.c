@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "userprog/gdt.h"
+#include "userprog/task.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -29,24 +30,12 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *task);
 static void __do_fork (void *);
-static pid_t allocate_pid ();
-static struct task *create_process (const char *file_name, struct thread *thread);
-static void init_process (struct task *task);
-static bool process_set_thread (struct task *task, struct thread *thrd);
-static bool process_set_status (struct task *task, enum process_status status);
-static void process_free (struct task* t);
 
-/* Lock used by allocate_pid(). */
-static struct lock pid_lock;
-
-/* List of processes. */
-static struct list process_list;
-
-/* Initialize process system */
+/* Initialize process system. */
 void
 process_init (void) {
-	lock_init (&pid_lock);
-	list_init (&process_list);
+	lock_init (&process_filesys_lock);
+	task_init ();
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -68,7 +57,11 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	task = create_process (file_name, NULL);
+	task = task_create (file_name, NULL);
+	if (task == NULL) {
+		return PID_ERROR;
+	}
+
 	task->args = fn_copy;
 	t = create_thread (file_name, PRI_DEFAULT, initd, task);
 	if (t == NULL) {
@@ -79,104 +72,6 @@ process_create_initd (const char *file_name) {
 	return task->pid;
 }
 
-static struct task *
-create_process (const char *file_name, struct thread* thread) {
-	char *fn_copy;
-	struct task *t;
-	pid_t pid;
-	char *args_begin;
-	size_t name_len;
-
-	t = palloc_get_page (PAL_ZERO);
-	if (t == NULL) {
-		return NULL;
-	}
-	init_process (t);
-	
-	args_begin = strchr (file_name, ' ');
-	name_len = args_begin - file_name + 1;
-	if (args_begin == NULL) {
-		name_len = strlen (file_name) + 1;
-	}
-
-	fn_copy = malloc (name_len + 1);
-	if (fn_copy == NULL) {
-		palloc_free_page (t);
-		return NULL;
-	}
-
-	strlcpy (fn_copy, file_name, name_len);
-	t->name = fn_copy;
-	t->thread = thread;
-	pid = t->pid = allocate_pid ();
-	list_push_back (&process_list, &t->elem);
-
-	if (thread != NULL) {
-		t->status = PROCESS_READY;
-	}
-	return t;
-}
-
-static bool
-process_set_thread (struct task *task, struct thread *thrd) {
-	if (thrd == NULL || task == NULL) {
-		return false;
-	}
-
-	if (task->thread != NULL) {
-		return false;
-	}
-
-	task->thread = thrd;
-	process_set_status (task, PROCESS_READY);
-	return true;
-}
-
-static bool
-process_set_status (struct task *task, enum process_status status) {
-	if (task == NULL) {
-		return false;
-	}
-
-	task->status = status;
-	return true;
-}
-
-static pid_t
-allocate_pid () {
-	static pid_t next_pid = 1;
-	pid_t pid;
-
-	lock_acquire (&pid_lock);
-	pid = next_pid++;
-	lock_release (&pid_lock);
-
-	return pid;
-}
-
-static void
-init_process (struct task *task) {
-	ASSERT (task != NULL)
-
-	task->name = NULL;
-	task->elem.next = NULL;
-	task->elem.prev = NULL;
-	task->if_ = NULL;
-	task->parent_pid = -1;
-	task->thread = NULL;
-	task->status = PROCESS_INIT;
-	sema_init (&task->fork_lock, 0);
-	sema_init (&task->wait_lock, 0);
-	list_init (&task->children);
-	for (size_t i = 0; i < MAX_FD; i++) {
-		if (i >= 3)
-			task->fds[i].closed = true;
-		task->fds[i].fd = i;
-	}
-
-	task->exit_code = 0;
-}
-
 /* A thread function that launches first user process. */
 static void
 initd (void *task) {
@@ -184,7 +79,7 @@ initd (void *task) {
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 	struct task *t = (struct task *) task;
-	process_set_thread (t, thread_current ());
+	task_set_thread (t, thread_current ());
 	if (process_exec (t->args) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
@@ -200,15 +95,12 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct task *parent;
 	pid_t child_pid;
 
-	if (strcmp ("child_195_O", name) == 0) {
-		printf("same\n");
-	}
-	parent = process_find_by_tid (thread_current ()->tid);
+	parent = task_find_by_tid (thread_tid ());
 	if (parent == NULL) {
 		return PID_ERROR;
 	}
 
-	child = create_process (name, NULL);
+	child = task_create (name, NULL);
 	child->parent_pid = parent->pid;
 	child->if_ = if_;
 	child_pid = child->pid;
@@ -216,57 +108,14 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	if (thread != NULL) {
 		sema_down (&child->fork_lock);
 	} else {
-		process_free (child);
+		task_free (child);
 		return -1;
 	}
 
-	if (process_find_by_pid (child_pid) == NULL) {
+	if (task_find_by_pid (child_pid) == NULL) {
 		return -1;
 	}
 	return child->pid;
-}
-
-static void
-process_free (struct task* t) {
-	if (t == NULL) {
-		return;
-	}
-
-	list_remove(&t->elem);
-	free (t->name);
-	palloc_free_page (t);
-}
-
-struct task *
-process_find_by_pid (pid_t pid) {
-	struct list_elem *e = NULL;
-	struct task *t = NULL;
-	struct task *found = NULL;
-	for (e = list_begin (&process_list); e != list_end (&process_list); e = list_next (e)) {
-		t = list_entry (e, struct task, elem);
-		if (t->pid == pid) {
-			found = t;
-			break;
-		}
-	}
-
-	return found; 
-}
-
-struct task *
-process_find_by_tid (tid_t tid) {
-	struct list_elem *e = NULL;
-	struct task *t = NULL;
-	struct task *found = NULL;
-	for (e = list_begin (&process_list); e != list_end (&process_list); e = list_next (e)) {
-		t = list_entry(e, struct task, elem);
-		if (t->thread != NULL && t->thread->tid == tid) {
-			found = t;
-			break;
-		}
-	}
-
-	return found;
 }
 
 #ifndef VM
@@ -280,7 +129,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	void *newpage;
 	bool writable;
 
-	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	/* 1. If the parent_page is kernel page, then return immediately. */
 	if (is_kern_pte (pte)) {
 		/* We will not copy the kernel page. but there are allocated things
 		 * like struct task. to successfully duplicate all of the user pte,
@@ -292,23 +141,22 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
 
-	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
-	 *    TODO: NEWPAGE. */
+	/* 3. Allocate new PAL_USER page for the child and set result to NEWPAGE. */
 	newpage = palloc_get_page (PAL_ZERO | PAL_USER);
 	if (newpage == NULL) {
 		return false;
 	}
 
-	/* 4. TODO: Duplicate parent's page to the new page and
-	 *    TODO: check whether parent's page is writable or not (set WRITABLE
-	 *    TODO: according to the result). */
+	/* 4. Duplicate parent's page to the new page and 
+	 *	  check whether parent's page is writable or not (set WRITABLE 
+	 *	  according to the result). */
 	memcpy (newpage, parent_page, PGSIZE);
 	writable = is_writable (pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
-		/* 6. TODO: if fail to insert page, do error handling. */
+		/* 6. if fail to insert page, do error handling. */
 		palloc_free_page (newpage);
 		return false;
 	}
@@ -328,8 +176,8 @@ __do_fork (void *aux) {
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if = task->if_;
 	bool succ = true;
-	process_set_thread (task, current);
-	struct task *parent = process_find_by_pid (task->parent_pid);
+	task_set_thread (task, current);
+	struct task *parent = task_find_by_pid (task->parent_pid);
 	if (parent == NULL) {
 		goto error;
 	}
@@ -358,15 +206,7 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
-	for (size_t i = 0; i < MAX_FD; i++) {
-		if (parent->fds[i].file != NULL) {
-			task->fds[i].file = file_duplicate (parent->fds[i].file);
-		}
-		
-		task->fds[i].closed = parent->fds[i].closed;
-		task->fds[i].fd = parent->fds[i].fd;
-	}
+	task_duplicate_fd (parent, task);
 
 	/* Finally, switch to the newly created process. */
 	if (succ) {
@@ -376,10 +216,9 @@ __do_fork (void *aux) {
 	}
 		
 error:
-	task->exit_code = -1;
-	process_set_status (task, PROCESS_FAIL);
+	task_set_status (task, PROCESS_FAIL);
 	sema_up (&task->fork_lock);
-	thread_exit ();
+	task_exit (-1);
 }
 
 /* Switch the current execution context to the f_name.
@@ -428,90 +267,68 @@ process_wait (pid_t child_pid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	struct task *current = process_find_by_tid (thread_current ()->tid);
-	struct task *child = process_find_by_pid (child_pid);
+	struct task *current = task_find_by_tid (thread_tid ());
+	struct task *child = task_find_by_pid (child_pid);
+	int result;
 	if (child == NULL) {
 		return -1;
 	}
 
+	/* The child process terminated before wait. */
 	if (child->status == PROCESS_EXITED) {
-		process_set_status (child, PROCESS_DYING);
-		return child->exit_code;
+		result = child->exit_code;
+		list_remove (&child->celem);
+		task_free (child);
+		goto done;
 	}
 
-	if (child->status == PROCESS_DYING) {
-		return -1;
-	}
-	
-	process_set_status (current, PROCESS_WAIT);
+	task_set_status (current, PROCESS_WAIT);
 	sema_down (&child->wait_lock);
-	process_set_status (child, PROCESS_DYING);
-	process_set_status (current, PROCESS_READY);
-	return child->exit_code;
+	task_set_status (child, PROCESS_DYING);
+	/* clean up process. */
+	result = child->exit_code;
+	if (current == NULL) {
+		goto done;
+	}
+
+	list_remove (&child->celem);
+	task_free (child);
+	task_set_status (current, PROCESS_READY);
+done:
+	return result;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
-	struct task *t = process_find_by_tid (curr->tid);
-	struct task *initd = process_find_by_pid (1);
-	if (t == NULL) {
+	struct task *task = task_find_by_tid (thread_tid ());
+	struct task *initd = task_find_by_pid (1);
+	if (task == NULL) {
 		goto cleanup;
 	}
-
-	if (t->status == PROCESS_FAIL) {
-		list_remove(&t->elem);
-		free (t->name);
-		palloc_free_page (t);
+	
+	/* Fork fails */
+	if (task->status == PROCESS_FAIL) {
+		task_free (task);
 		goto cleanup;	
 	}
 
-	printf ("%s: exit(%d)\n", t->name, t->exit_code);
-	process_set_status (t, PROCESS_EXITED);
-	sema_up (&t->wait_lock);
+	printf ("%s: exit(%d)\n", task->name, task->exit_code);
+	task_set_status (task, PROCESS_EXITED);
+	sema_up (&task->wait_lock);
+	task_cleanup (task);
 
-	for (size_t i = 0; i < MAX_FD; i++) {
-		if (!t->fds[i].closed) {
-			t->fds[i].closed = true;
-			if (t->fds[i].file != NULL) {
-				file_close (t->fds[i].file);
-				t->fds[i].file = NULL;
-			}
-		}
+	/* If the current process has children, remove children. 
+	 * If there is child processes that aren't complete its task,
+	 * make its parent process to initd. 
+	 */
+	if (task_child_len (task) != 0) {
+		task_inherit_initd (task);
 	}
-
-	if (list_size (&t->children) != 0) {
-		struct list_elem *e = NULL;
-		struct list_elem *temp = NULL;
-		for (e = list_begin (&t->children); e != list_end(&t->children);) {
-			struct task *child = list_entry (e, struct task, celem);
-
-			if (child->status == PROCESS_DYING || child->status == PROCESS_EXITED) {
-				e = list_remove (&child->celem);
-				list_remove (&child->elem);
-				printf ("%s destory.\n", child->name);
-				free (child->name);
-				palloc_free_page (child);
-				
-				continue;
-			}
-			printf ("%s is not die.\n", child->name);
-			e = list_next (e);
-		}
-	}
-
-	file_close (t->executable);
 	
 	/* If there is no the parent process, then remove immediately. */
-	if (t->parent_pid < 0) {
-		list_remove(&t->elem);
-		free (t->name);
-		palloc_free_page (t);
+	if (task->parent_pid < 0) {
+		task_free (task);
 	}
 
 cleanup:
@@ -622,12 +439,12 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
+	struct task* task = task_find_by_tid (t->tid);
 	struct ELF ehdr;
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
 	int i;
-	struct task* task = process_find_by_tid (t->tid);
 
 	// Declare variables for tokenizing arguments
 	char *argv_tokens[64];		// Number of tokens could be up to 64, as kernel can receive 128Bytes command lines
@@ -644,7 +461,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 	argc = cnt;
 
-
 	// Make list of argument address
 	char** address_argv[argc + 1];
 	address_argv[argc] = 0;
@@ -653,11 +469,13 @@ load (const char *file_name, struct intr_frame *if_) {
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
 		goto done;
-	process_activate (thread_current ());
+	process_activate (t);
 
 	/* Open executable file. */
 	char *file_name_token = argv_tokens[0];
+	lock_acquire (&process_filesys_lock);
 	file = filesys_open (file_name_token);
+	lock_release (&process_filesys_lock);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name_token);
 		goto done;
@@ -770,7 +588,6 @@ done:
 	file_close (file);
 	return success;
 }
-
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */

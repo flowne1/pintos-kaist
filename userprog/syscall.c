@@ -3,19 +3,21 @@
 #include <syscall-nr.h>
 #include <console.h>
 #include "devices/input.h"
+#include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
-#include "userprog/process.h"
-#include "userprog/gdt.h"
-#include "threads/flags.h"
-#include "filesys/file.h"
-#include "intrinsic.h"
-#include "threads/synch.h"
-#include "filesys/filesys.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
+#include "userprog/process.h"
+#include "userprog/gdt.h"
+#include "userprog/task.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "intrinsic.h"
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -24,18 +26,19 @@ static void syscall_halt (void);
 static int syscall_fork (const char *thread_name, struct intr_frame *if_);
 static int syscall_exec (const char *cmd_line);
 static int syscall_wait (pid_t pid);
+static bool syscall_create (const char *file, unsigned initial_size);
+static bool syscall_remove (const char *file);
+static int syscall_open (const char *file);
 static int syscall_filesize (int fd);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned pos);
 static unsigned syscall_tell (int fd);
 static void syscall_close (int fd); 
+static int syscall_dup2 (int oldfd, int newfd);
 static int64_t get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
-static int allocate_fd (struct file *file);
-static bool is_valid_address (void *addr);
-
-struct lock filesys_lock;	// Privately added
+static int allocate_fd (void);
 
 /* System call.
  *
@@ -61,9 +64,6 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-
-	// Init lock for file-related syscalls
-	lock_init (&filesys_lock);
 }
 
 /* The main system call interface */
@@ -123,7 +123,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
 			break;
 		case SYS_DUP2:
-			PANIC ("Unimplemented syscall syscall_%lld", f->R.rax);
+			f->R.rax = syscall_dup2 (f->R.rdi, f->R.rsi);
 			break;
 		case SYS_MOUNT:
 		case SYS_UMOUNT:
@@ -141,14 +141,7 @@ syscall_halt () {
 
 static void
 syscall_exit (int status) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
-	if (task == NULL) {
-		return;
-	}
-
-	task->exit_code = status;
-	thread_exit ();
+	task_exit (status);
 }
 
 static int
@@ -158,31 +151,27 @@ syscall_fork (const char *thread_name, struct intr_frame *if_) {
 
 static int
 syscall_exec (const char *cmd_line) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	char* fn_copy;
 	if (task == NULL) {
 		return -1;
 	}
 
 	if (get_user (cmd_line) == -1) {
-		task->exit_code = -1;
-		thread_exit ();	
+		task_exit (-1);
 	}
 
 	file_close (task->executable);
 	task->executable = NULL;
 	fn_copy = palloc_get_page (0);
 	if (fn_copy == NULL) {
-		task->exit_code = -1;
-		thread_exit ();
+		task_exit (-1);
 	}
 
 	strlcpy (fn_copy, cmd_line, PGSIZE);
 
 	if (process_exec (fn_copy) < 0) {
-		task->exit_code = -1;
-		thread_exit ();
+		task_exit (-1);
 	}
 
 	NOT_REACHED ();
@@ -194,13 +183,82 @@ syscall_wait (pid_t pid) {
 	return process_wait (pid);
 }
 
+static bool 
+syscall_create (const char *file, unsigned initial_size) {
+	struct task *task = task_find_by_tid (thread_tid ());
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (get_user (file) == -1) {
+		task_exit (-1);
+	}
+
+	lock_acquire (&process_filesys_lock);
+	bool success = filesys_create (file, initial_size);
+	lock_release (&process_filesys_lock);
+
+	return success;
+}
+
+static bool 
+syscall_remove (const char *file) {
+	struct task *task = task_find_by_tid (thread_tid ());
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (get_user (file) == -1) {
+		task_exit (-1);
+	}
+
+	lock_acquire (&process_filesys_lock);
+	bool success = filesys_remove (file);
+	lock_release (&process_filesys_lock);
+	return success;
+}
+
+static int 
+syscall_open (const char *file) {
+	struct task *task = task_find_by_tid (thread_tid ());
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (get_user (file) == -1) {
+		task_exit (-1);
+	}
+
+	int fd = allocate_fd ();
+	if (fd < 0) {
+		return -1;
+	}
+
+	lock_acquire (&process_filesys_lock);
+	struct file *f = filesys_open (file);
+	lock_release (&process_filesys_lock);
+	if (f == NULL) {
+		return -1;
+	}
+
+	task->fds[fd].closed = false;
+	task->fds[fd].file = f;
+	task->fds[fd].fd = fd;
+	task->fds[fd].duplicated = false;
+	task->fds[fd].dup_count = 0;
+	return fd;
+}
+
 static int 
 syscall_filesize (int fd) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	struct fd *fd_info = NULL;
 	if (task == NULL) {
 		return -1;
+	}
+
+	if (fd >= MAX_FD) {
+		fd = task_find_fd_map (task, fd);
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
@@ -221,27 +279,28 @@ syscall_filesize (int fd) {
 
 static int 
 syscall_read (int fd, void *buffer, unsigned size) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	if (task == NULL) {
 		return -1;
 	}
 	
+	if (fd >= MAX_FD) {
+		fd = task_find_fd_map (task, fd);
+	}
+
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
 	}
 
 	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
-		task->exit_code = -1;
-		thread_exit ();
+		task_exit (-1);
 	}
 
-	if (task->fds[fd].fd == 0 && !task->fds[fd].closed) {
+	if (task->fds[fd].stdio == 0) {
 		for (size_t i = 0; i < size; i++) {
 			bool result = put_user (buffer + i, input_getc());
 			if (!result) {
-				task->exit_code = 139;
-				thread_exit ();
+				task_exit (-1);
 			}
 		}
 
@@ -252,85 +311,32 @@ syscall_read (int fd, void *buffer, unsigned size) {
 		return -1;
 	}
 	
-	lock_acquire (&filesys_lock);
+	lock_acquire (&process_filesys_lock);
 	off_t ret = file_read (task->fds[fd].file, buffer, size);
-	lock_release (&filesys_lock);
+	lock_release (&process_filesys_lock);
 	return ret;
-}
-
-bool 
-syscall_create (const char *file, unsigned initial_size) {
-	if (!is_valid_address (file)) {
-		syscall_exit (-1);
-	}
-
-	lock_acquire (&filesys_lock);
-
-	// Call filesys_create to create file
-	bool success = filesys_create (file, initial_size);
-
-	lock_release (&filesys_lock);
-
-	return success;
-}
-
-bool 
-syscall_remove (const char *file) {
-	if (!is_valid_address (file)) {
-		syscall_exit (-1);
-	}
-
-	lock_acquire (&filesys_lock);
-
-	// Call filesys_remove to remove file
-	bool success = filesys_remove (file);
-
-	lock_release (&filesys_lock);
-	return success;
-}
-
-int 
-syscall_open (const char *file) {
-	if (!is_valid_address (file)) {
-		syscall_exit (-1);
-	}
-
-	// Call filesys_open to open file
-	lock_acquire (&filesys_lock);
-	struct file *f = filesys_open (file);
-	lock_release (&filesys_lock);
-	if (f == NULL) {
-		return -1;
-	}
-
-	// If opening file is successful, allocate fd to opened file
-	int fd = allocate_fd (f);
-	if (fd < 0) {
-		file_close (f);
-		return -1;
-	}
-	
-	return fd;
 }
 
 static int
 syscall_write (int fd, void *buffer, unsigned size) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	if (task == NULL) {
 		return -1;
 	}
 
 	if (get_user (buffer) == -1 || get_user (buffer + size) == -1) {
-		task->exit_code = -1;
-		thread_exit ();
+		task_exit (-1);
+	}
+
+	if (fd >= MAX_FD) {
+		fd = task_find_fd_map (task, fd);
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
 	}
 
-	if (task->fds[fd].fd == 1 && !task->fds[fd].closed) {
+	if (task->fds[fd].stdio == 1) {
 		putbuf(buffer, size);
 		return size;
 	}
@@ -339,18 +345,21 @@ syscall_write (int fd, void *buffer, unsigned size) {
 		return -1;
 	}
 
-	lock_acquire (&filesys_lock);
+	lock_acquire (&process_filesys_lock);
 	off_t ret = file_write (task->fds[fd].file, buffer, size);
-	lock_release (&filesys_lock);
+	lock_release (&process_filesys_lock);
 	return ret;
 }
 
 static void
 syscall_seek (int fd, unsigned pos) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	if (task == NULL) {
 		return;
+	}
+
+	if (fd >= MAX_FD) {
+		fd = task_find_fd_map (task, fd);
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
@@ -360,17 +369,20 @@ syscall_seek (int fd, unsigned pos) {
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
 		return;
 	}
-	lock_acquire (&filesys_lock);
+	lock_acquire (&process_filesys_lock);
 	file_seek (task->fds[fd].file, pos);
-	lock_release (&filesys_lock);
+	lock_release (&process_filesys_lock);
 }
 
 static unsigned
 syscall_tell (int fd) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	if (task == NULL) {
 		return -1;
+	}
+
+	if (fd >= MAX_FD) {
+		fd = task_find_fd_map (task, fd);
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
@@ -380,18 +392,21 @@ syscall_tell (int fd) {
 	if (task->fds[fd].closed || task->fds[fd].file == NULL) {
 		return -1;
 	}
-	lock_acquire (&filesys_lock);
+	lock_acquire (&process_filesys_lock);
 	off_t ret = file_tell (task->fds[fd].file);
-	lock_release (&filesys_lock);
+	lock_release (&process_filesys_lock);
 	return ret;
 }
 
 static void
 syscall_close (int fd) {
-	struct thread *curr = thread_current ();
-	struct task *task = process_find_by_tid (curr->tid);
+	struct task *task = task_find_by_tid (thread_tid ());
 	if (task == NULL) {
 		return;
+	}
+
+	if (fd >= MAX_FD) {
+		fd = task_find_fd_map (task, fd);
 	}
 
 	if (fd < 0 || fd >= MAX_FD) {
@@ -402,19 +417,100 @@ syscall_close (int fd) {
 		return;
 	}
 
-	if (fd <= 2 && fd >= 0) {
+	/* Neither duplicated nor duplicated by another FD. */
+	if (!task->fds[fd].duplicated && task->fds[fd].dup_count == 0) {
+		lock_acquire (&process_filesys_lock);
+		file_close (task->fds[fd].file);
+		lock_release (&process_filesys_lock);
 		task->fds[fd].closed = true;
+		task->fds[fd].file = NULL;
+		task->fds[fd].fd_map = fd;
+		task->fds[fd].stdio = -1;
 		return;
 	}
 
-	if (task->fds[fd].file == NULL) {
+	/* Duplicated */
+	size_t parent_fd = task_find_original_fd (task, task->fds[fd].fd);
+	if (task->fds[fd].duplicated) {
+		task->fds[fd].fd = fd;
+		task->fds[fd].fd_map = fd;
+		task->fds[fd].closed = true;
+		task->fds[fd].file = NULL;
+		task->fds[fd].duplicated = false;
+
+		if (parent_fd != fd) {
+			task->fds[parent_fd].dup_count -= 1;
+		}
 		return;
 	}
-	lock_acquire (&filesys_lock);
-	file_close (task->fds[fd].file);
-	lock_release (&filesys_lock);
-	task->fds[fd].closed = true;
-	task->fds[fd].file = NULL;
+
+	/* lend, not duplicated */
+	if (task->fds[fd].dup_count > 0) {
+		task->fds[fd].closed = true;
+		task_inherit_fd (task, fd);
+		task->fds[fd].fd = fd;
+		task->fds[fd].fd_map = fd;
+		task->fds[fd].dup_count = 0;
+		task->fds[fd].duplicated = false;
+		task->fds[fd].file = NULL;
+		task->fds[fd].stdio = -1;
+	}
+}
+
+static int
+syscall_dup2 (int oldfd, int newfd) {
+	struct task *task = task_find_by_tid (thread_tid ());
+	int newfd_copy = newfd;
+
+	if (task == NULL) {
+		return -1;
+	}
+
+	if (oldfd >= MAX_FD) {
+		oldfd = task_find_fd_map (task, oldfd);
+	}
+
+	if (newfd >= MAX_FD) {
+		newfd = task_find_fd_map (task, newfd);
+		if (newfd == -1 && (newfd = allocate_fd ()) == -1) {
+			return -1;
+		}
+	}
+
+	if (oldfd < 0 || oldfd >= MAX_FD) {
+		return -1;
+	}
+
+	if (newfd < 0 || newfd >= MAX_FD) {
+		return -1;
+	}
+
+	if (oldfd == newfd) {
+		return newfd_copy;
+	}
+
+	if (task->fds[oldfd].closed) {
+		return -1;
+	}
+
+	if (!task->fds[newfd].closed) {
+		syscall_close (task->fds[newfd].fd_map);
+	}
+	
+	fd_t parent_fd = task_find_original_fd (task, oldfd);
+	if (parent_fd == -1) {
+		return -1;
+	}
+
+	task->fds[newfd].fd = parent_fd;
+	task->fds[newfd].file = task->fds[parent_fd].file;
+	task->fds[parent_fd].dup_count += 1;
+	task->fds[newfd].duplicated = true;
+	task->fds[newfd].closed = false;
+	task->fds[newfd].fd_map = newfd_copy;
+	task->fds[newfd].dup_count = 0;
+	task->fds[newfd].stdio = task->fds[parent_fd].stdio;
+	return newfd;
 }
 
 /* Reads a byte at user virtual address UADDR.
@@ -446,29 +542,17 @@ put_user (uint8_t *udst, uint8_t byte) {
     return error_code != -1;
 }
 
-// Allocate empty fd to given file
 static int
-allocate_fd (struct file *file) {
-	struct task *curr_task = process_find_by_tid (thread_current ()->tid);
+allocate_fd (void) {
+	struct task *task = task_find_by_tid (thread_tid ());
 	
-	// Search emtpy fd, start from 3
 	int fd = -1;
 	for (int i = 3; i <= MAX_FD; i++) {
-		if (curr_task->fds[i].closed) {			// If any closed fd is found
-			curr_task->fds[i].closed = false;	// Change status of fd to 'open'
-			curr_task->fds[i].file = file;		// Set given fild into fd
-			fd = i;								// Get fd number
+		if (task->fds[i].closed && task->fds[i].dup_count == 0) {
+			fd = i;
 			break;
 		}
 	}
 
 	return fd;
-}
-
-// Validates given address and if not, call exit(-1)
-// 'Valid address' means 1. not NULL 2. located in user area
-static bool
-is_valid_address (void *addr) {
-	return addr != NULL && is_user_vaddr (addr) 
-	&& pml4_get_page(thread_current ()->pml4, addr) != NULL;
 }
