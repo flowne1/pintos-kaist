@@ -4,7 +4,7 @@ Kernel command line: -q -f put multi-oom run multi-oom
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  65,433,600 loops/s.
+Calibrating timer...  143,974,400 loops/s.
 hd0:0: detected 321 sector (160 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 107 sector (53 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -13,23 +13,23 @@ Boot complete.
 Putting 'multi-oom' into the file system...
 Executing 'multi-oom':
 (multi-oom) begin
-Interrupt 0x0d (#GP General Protection Exception) at rip=8004220377
+Interrupt 0x0d (#GP General Protection Exception) at rip=800422041d
  cr2=0000000000000000 error=               0
 rax 6f6f2d69746c756d rbx 0000000000000000 rcx 0000000000000000 rdx 0000000000000460
 rsp 000000800423feb0 rbp 000000800423fec0 rsi 0000000000000000 rdi 6f6f2d69746c756d
-rip 0000008004220377 r8 0000000000000000  r9 0000000000000000 r10 0000000000000000
-r11 0000000000000216 r12 000000800421d4f4 r13 0000000000000000 r14 0000000000000000
+rip 000000800422041d r8 0000000000000000  r9 0000000000000000 r10 0000000000000000
+r11 0000000000000216 r12 000000800421d59a r13 0000000000000000 r14 0000000000000000
 r15 0000000000000000 rflags 00000202
 es: 001b ds: 001b cs: 0008 ss: 0010
 Kernel PANIC at ../../userprog/exception.c:98 in kill(): Kernel bug - unexpected interrupt in kernel
-Call stack: 0x8004218579 0x800421d213 0x800420949b 0x80042098b9 0x800421f4f1 0x800421dae4 0x800421d647 0x800421d41d 0x40011c 0x4003a7 0x40044b 0x400fb0.
+Call stack: 0x8004218579 0x800421d2b9 0x800420949b 0x80042098b9 0x800421f597 0x800421db8a 0x800421d6ed 0x800421d4c3 0x40011c 0x4003a7 0x40044b 0x400fb0.
 The `backtrace' program can make call stacks useful.
 Read "Backtraces" in the "Debugging Tools" chapter
 of the Pintos documentation for more information.
-Timer: 67 ticks
-Thread: 30 idle ticks, 28 kernel ticks, 9 user ticks
+Timer: 70 ticks
+Thread: 30 idle ticks, 30 kernel ticks, 10 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 209 reads, 242 writes
 hd1:0: 107 reads, 0 writes
-Console: 1699 characters output
+Console: 1701 characters output
 Key

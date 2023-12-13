@@ -47,7 +47,7 @@ pass tests/userprog/exec-missing
 pass tests/userprog/exec-bad-ptr
 pass tests/userprog/exec-read
 pass tests/userprog/wait-simple
-FAIL tests/userprog/wait-twice
+pass tests/userprog/wait-twice
 pass tests/userprog/wait-killed
 pass tests/userprog/wait-bad-pid
 pass tests/userprog/multi-recurse

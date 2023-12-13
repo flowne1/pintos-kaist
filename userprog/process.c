@@ -261,14 +261,25 @@ process_wait (tid_t child_tid) {
 	if (!child || child->parent != parent) {
 		return -1;
 	}
-
 	sema_down (&child->wait_sema);
 	
 	// After process_exit() of child is done, get exit status of child
 	int exit_status = child->exit_status;
+	// After getting exit_status, delete all relationship between parent and child
 	list_remove (&child->c_elem);
+	child->parent = NULL;
+	// If child process has children, set its parent to initd(= tid 3)
+	if (!list_empty (&child->child_list)) {
+		struct list_elem *e = list_begin (&child->child_list);
+		while (e != list_end (&child->child_list)) {
+			struct thread *grand_child = list_entry (e, struct thread, c_elem);
+			struct thread *init = thread_find_by_tid (3);
+			grand_child->parent = init;
+		}
+	}
 
 	sema_up (&child->free_sema);
+
 
 	return exit_status;
 }
@@ -277,10 +288,6 @@ process_wait (tid_t child_tid) {
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
 	// Close all opened file
 	for (int i = 2; i < MAX_FD; i++) {
 		if (curr->fdt[i].in_use) {
@@ -292,7 +299,7 @@ process_exit (void) {
 
 	// Signal waiting parent to wake up
 	sema_up (&curr->wait_sema);
-	// Sleep?
+	// Sleep till parent finishing its job
 	sema_down (&curr->free_sema);
 
 	// Clean up process
@@ -324,8 +331,7 @@ process_cleanup (void) {
 		pml4_activate (NULL);
 		pml4_destroy (pml4);
 	}
-	// // Free allocated memory for FD
-	// palloc_free_multiple(curr->fd_table, 1);
+
 }
 
 /* Sets up the CPU for running user code in the nest thread.
