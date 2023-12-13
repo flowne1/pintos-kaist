@@ -208,6 +208,12 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
+	// // Initialize FD table
+	// t->fd_table = palloc_get_multiple (PAL_ZERO, 1);
+	// if (!t->fd_table) {
+	// 	return TID_ERROR;
+	// }
+
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
@@ -222,8 +228,8 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);		// note : default value of newly initiated thread's status is BLOCKED
 
-	// for priority scheduling
-	// try preemption
+	// For priority scheduling
+	// Try preemption
 	thread_try_preemption ();
 
 	return tid;
@@ -641,14 +647,22 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	// privately added
+	// Privately added for threads
 	t->original_priority = priority;
 	list_init (&t->donor_list);
 	t->lock_waiting = NULL;
-
 	t->nice = 0;
 	t->fixed_recent_cpu = 0;
 	list_push_back (&thread_list, &t->t_elem);
+
+	// Privately added for syscalls
+	t->next_fd = 2;				// FD 0, 1 is for std I/O
+	// Initialize FD table
+	t->fdt[0].in_use = true;
+	t->fdt[1].in_use = true;
+	for (int i = 2; i < MAX_FD; i++) {
+		t->fdt[i].in_use = false;
+	}
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

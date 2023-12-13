@@ -113,12 +113,10 @@ inode_open (disk_sector_t sector) {
 			return inode; 
 		}
 	}
-
 	/* Allocate memory. */
 	inode = malloc (sizeof *inode);
 	if (inode == NULL)
 		return NULL;
-
 	/* Initialize. */
 	list_push_front (&open_inodes, &inode->elem);
 	inode->sector = sector;

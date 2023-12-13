@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "devices/timer.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -49,6 +50,10 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+
+	// Parse 'file_name'
+	char *token, *save_ptr;
+	strtok_r(file_name, " ", &save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -200,10 +205,13 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+process_wait (tid_t child_pid) {
+	int start_tick = timer_ticks ();
+	int end_tick = start_tick + 500; // wait for 5 sec
+	while (timer_ticks () <= end_tick) {
+
+
+	}
 	return -1;
 }
 
@@ -215,7 +223,7 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
+	file_close (curr->file_running);	// Close running file
 	process_cleanup ();
 }
 
@@ -244,6 +252,8 @@ process_cleanup (void) {
 		pml4_activate (NULL);
 		pml4_destroy (pml4);
 	}
+	// // Free allocated memory for FD
+	// palloc_free_multiple(curr->fd_table, 1);
 }
 
 /* Sets up the CPU for running user code in the nest thread.
@@ -329,6 +339,26 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	// Declare variables for tokenizing arguments
+	char *argv_tokens[64];		// Number of tokens could be up to 64, as kernel can receive 128Bytes command lines
+	char fn_copy[128];			// Up to 128Bytes ... how about modify using malloc?
+	strlcpy (fn_copy, file_name, sizeof(fn_copy));
+	char *token, *save_ptr;
+	int cnt = 0;
+	int argc = 0;
+
+	// Tokenize 'file_name' by space and add them into list
+	for (token = strtok_r (&fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
+		argv_tokens[cnt] = token;
+		cnt++;
+	}
+	argc = cnt;
+
+
+	// Make list of argument address
+	char** address_argv[argc + 1];
+	address_argv[argc] = 0;
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -336,11 +366,15 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	char *file_name_token = argv_tokens[0];
+	file = filesys_open (file_name_token);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", file_name_token);
 		goto done;
 	}
+	// If opening file is successful, deny write and add file to sturct thread
+	file_deny_write (file);
+	t->file_running = file;
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -350,7 +384,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", file_name_token);
 		goto done;
 	}
 
@@ -414,14 +448,39 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	/* TODO: Implement argument passing (see project2/argument_passing.html). */
+	// Push all argument tokens to user stack
+	for (i = argc - 1; i >= 0; i--) {
+		int arglen = strlen (argv_tokens[i]) + 1; 		// Find length of argument, including null sentinel
+		if_->rsp -= arglen;								// Make buffer for argument
+		strlcpy (if_->rsp, argv_tokens[i], arglen);		// Copy ith argument to if_->rsp
+		address_argv[i] = if_->rsp;						// Copy address of ith argument
+	}
 
-	success = true;
+	// Align stack pointer to 8-byte boundary
+	if_->rsp -= if_->rsp % 8;
+	
+	// Push address of arguments, in the proper order
+	for (i = argc; i >= 0; i--) {
+		if_->rsp -= sizeof(char *);
+		*(char **)if_->rsp = address_argv[i];
+	}
+
+	// Set rdi and rsi of if_
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp;
+
+	// Push fake return address 0
+	if_->rsp -= sizeof(void *);
+	*(void **) if_->rsp = 0;
+
+	// Successful, return true
+	return true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
+	
 	return success;
 }
 

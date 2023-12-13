@@ -86,11 +86,9 @@ malloc (size_t size) {
 	struct desc *d;
 	struct block *b;
 	struct arena *a;
-
 	/* A null pointer satisfies a request for 0 bytes. */
 	if (size == 0)
 		return NULL;
-
 	/* Find the smallest descriptor that satisfies a SIZE-byte
 	   request. */
 	for (d = descs; d < descs + desc_cnt; d++)
@@ -111,7 +109,6 @@ malloc (size_t size) {
 		a->free_cnt = page_cnt;
 		return a + 1;
 	}
-
 	lock_acquire (&d->lock);
 
 	/* If the free list is empty, create a new arena. */
@@ -134,7 +131,6 @@ malloc (size_t size) {
 			list_push_back (&d->free_list, &b->free_elem);
 		}
 	}
-
 	/* Get a block from free list and return it. */
 	b = list_entry (list_pop_front (&d->free_list), struct block, free_elem);
 	a = block_to_arena (b);
@@ -149,17 +145,14 @@ void *
 calloc (size_t a, size_t b) {
 	void *p;
 	size_t size;
-
 	/* Calculate block size and make sure it fits in size_t. */
 	size = a * b;
 	if (size < a || size < b)
 		return NULL;
-
 	/* Allocate and zero memory. */
 	p = malloc (size);
 	if (p != NULL)
 		memset (p, 0, size);
-
 	return p;
 }
 

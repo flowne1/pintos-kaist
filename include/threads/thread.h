@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "filesys/file.h"
+
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +29,16 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+//
+#define MAX_FD 64						// 
+
+// FD table struct
+typedef struct fd_table {
+	bool in_use;
+	struct file *file;
+};
+
 
 /* A kernel thread or user process.
  *
@@ -92,16 +104,20 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
-	// Privately added
-	int original_priority;				// Original priority of 
+	// Privately added for threads
+	int original_priority;				// Original priority of thread
 	int64_t ticks_to_wakeup;			// Storing ticks till wakeup
 	struct list donor_list;				// List of priority donors for multiple donation
 	struct list_elem d_elem;			// List elem for 'donor_list'
 	struct lock *lock_waiting;			// Pointer of lock that a thread is waiting to acquire
-
 	int nice;							// 'Niceness' of thread to other threads
 	int fixed_recent_cpu;				// Stores fixed scaled ticks recently used by the thread, incrementing per each timer tick
 	struct list_elem t_elem;			// List elem for 'List of all threads'
+
+	// Privately added for syscalls
+	struct fd_table fdt[MAX_FD];		// FD table
+	int next_fd;						// 
+	struct file *file_running;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -114,7 +130,6 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
-
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
