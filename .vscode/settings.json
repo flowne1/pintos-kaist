@@ -1,14 +1,15 @@
 {
-    "files.associations": {
-        "flags.h": "c",
-        "intr-stubs.h": "c",
-        "io.h": "c",
-        "stdint.h": "c",
-        "inttypes.h": "c",
-        "interrupt.h": "c",
-        "syscall.h": "c",
-        "main.h": "c",
-        "malloc.h": "c",
-        "*.inc": "c"
-    }
+  "files.associations": {
+    "flags.h": "c",
+    "intr-stubs.h": "c",
+    "io.h": "c",
+    "stdint.h": "c",
+    "inttypes.h": "c",
+    "interrupt.h": "c",
+    "syscall.h": "c",
+    "main.h": "c",
+    "malloc.h": "c",
+    "*.inc": "c",
+    "file.h": "c"
+  }
 }
