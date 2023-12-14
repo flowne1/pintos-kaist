@@ -32,7 +32,7 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 //
-#define MAX_FD 64						// 
+#define MAX_FD 64						// Capacitiy of FD table
 
 // FD table struct
 typedef struct fd_table {

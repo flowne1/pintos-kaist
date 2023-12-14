@@ -196,6 +196,7 @@ syscall_remove (const char *file) {
 
 static int 
 syscall_open (const char *file) {
+	// Check argument validity
 	if (!is_valid_address (file)) {
 		syscall_exit (-1);
 	}
@@ -211,7 +212,7 @@ syscall_open (const char *file) {
 	// Allocate empty FD to given file
 	int fd = allocate_fd (f);
 	if (fd == -1) {
-		file_close (file);
+		file_close (f);
 	}
 
 	lock_release (&filesys_lock);
@@ -292,7 +293,9 @@ syscall_write (int fd, void *buffer, unsigned size) {
 
 	// If given fd is for STDOUT
 	if (fd == 1) {
+		lock_acquire (&filesys_lock);
 		putbuf (buffer, size);
+		lock_release (&filesys_lock);
 		return size;
 	}
 
@@ -373,7 +376,6 @@ static int
 allocate_fd (struct file *file) {
 	struct thread *curr = thread_current ();
 	int fd = -1;
-
 	// Search empty FD
 	for (int i = 2; i < MAX_FD; i++) {
 		if (!curr->fdt[i].in_use) {
@@ -383,6 +385,5 @@ allocate_fd (struct file *file) {
 			break;
 		}
 	}
-
 	return fd;
 }

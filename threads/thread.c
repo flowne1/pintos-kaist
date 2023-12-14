@@ -669,6 +669,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->fdt[1].in_use = true;
 	for (int i = 2; i < MAX_FD; i++) {
 		t->fdt[i].in_use = false;
+		t->fdt[i].file = NULL;
 	}
 	list_init(&t->child_list);				// Init list of child
 	t->exit_status = 0;
@@ -883,5 +884,5 @@ thread_find_by_tid (tid_t tid) {
 		t_e = list_next (t_e);
 	}
 
-	return tid;;
+	return NULL;
 }

@@ -85,13 +85,21 @@ process_fork (const char *name, struct intr_frame *if_) {
 	memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
 
 	tid_t child_tid = thread_create (name, PRI_DEFAULT, __do_fork, curr);
-	if (!child_tid) {
+	if (child_tid == TID_ERROR) {
+		return TID_ERROR;
+	}
+
+	struct thread *child = thread_find_by_tid (child_tid);
+	if (!child) {
 		return TID_ERROR;
 	}
 
 	// Sema down parent process till __do_fork finishes its work
-	struct thread *child = thread_find_by_tid (child_tid);
 	sema_down(&child->fork_sema);
+
+	if (child->exit_status == -1) {
+		return TID_ERROR;
+	}
 
 	return child_tid;
 }
@@ -188,10 +196,6 @@ __do_fork (void *aux) {
 		}
 	}
 
-	// // When creating thread, set relationship between parent and child
-	// current->parent = parent;
-	// list_push_back (&parent->child_list, &current->c_elem);
-
 	process_init ();
 
 	// When fork is done, sema up to wake up parent process
@@ -202,7 +206,10 @@ __do_fork (void *aux) {
 		do_iret (&if_);
 error:
 	sema_up (&current->fork_sema);
-	thread_exit ();
+	// If somehow error occured, exit current thread with code -1
+	syscall_exit (-1);
+	// current->exit_status = -1;
+	// thread_exit ();
 }
 
 /* Switch the current execution context to the f_name.
@@ -248,19 +255,13 @@ process_exec (void *f_name) {
  * does nothing. */
 int
 process_wait (tid_t child_tid) {
-	// int start_tick = timer_ticks ();
-	// int end_tick = start_tick + 500; // wait for 5 sec
-	// while (timer_ticks () <= end_tick) {
-
-
-	// }
-	// return -1;
 	struct thread *parent = thread_current ();
 	struct thread *child = thread_find_by_tid (child_tid);
 	// Return if child is not found, or not parent-child relationship
 	if (!child || child->parent != parent) {
 		return -1;
 	}
+
 	sema_down (&child->wait_sema);
 	
 	// After process_exit() of child is done, get exit status of child
@@ -268,18 +269,17 @@ process_wait (tid_t child_tid) {
 	// After getting exit_status, delete all relationship between parent and child
 	list_remove (&child->c_elem);
 	child->parent = NULL;
-	// If child process has children, set its parent to initd(= tid 3)
-	if (!list_empty (&child->child_list)) {
-		struct list_elem *e = list_begin (&child->child_list);
-		while (e != list_end (&child->child_list)) {
-			struct thread *grand_child = list_entry (e, struct thread, c_elem);
-			struct thread *init = thread_find_by_tid (3);
-			grand_child->parent = init;
-		}
-	}
+	// // If child process has children, set its parent to initd(= tid 3)
+	// if (!list_empty (&child->child_list)) {
+	// 	struct list_elem *e = list_begin (&child->child_list);
+	// 	while (e != list_end (&child->child_list)) {
+	// 		struct thread *grand_child = list_entry (e, struct thread, c_elem);
+	// 		struct thread *init = thread_find_by_tid (3);
+	// 		grand_child->parent = init;
+	// 	}
+	// }
 
 	sema_up (&child->free_sema);
-
 
 	return exit_status;
 }
@@ -292,6 +292,7 @@ process_exit (void) {
 	for (int i = 2; i < MAX_FD; i++) {
 		if (curr->fdt[i].in_use) {
 			file_close (curr->fdt[i].file);
+			curr->fdt[i].in_use = false;
 		}
 	}
 	// Close running file
@@ -433,7 +434,6 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 	argc = cnt;
-
 
 	// Make list of argument address
 	char** address_argv[argc + 1];
