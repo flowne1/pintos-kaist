@@ -63,11 +63,12 @@ void task_inherit_initd (struct task *t);
 void task_free (struct task *t);
 void task_cleanup (struct task *t);
 size_t task_child_len (struct task *t);
-void task_duplicate_fd (struct task *parent, struct task *child);
+void task_fork_fd (struct task *parent, struct task *child);
 void task_exit (int status);
 struct task *task_find_by_pid (pid_t pid);
 struct task *task_find_by_tid (tid_t tid); 
 fd_t task_find_original_fd (struct task* task, int fd);
 fd_t task_find_fd_map (struct task *task, int fd);
 bool task_inherit_fd (struct task *task, int fd);
+void fd_init (struct fd *fdt, fd_t fd);
 #endif

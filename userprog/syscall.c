@@ -257,9 +257,7 @@ syscall_filesize (int fd) {
 		return -1;
 	}
 
-	if (fd >= MAX_FD) {
-		fd = task_find_fd_map (task, fd);
-	}
+	fd = task_find_fd_map (task, fd);
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
@@ -284,9 +282,7 @@ syscall_read (int fd, void *buffer, unsigned size) {
 		return -1;
 	}
 	
-	if (fd >= MAX_FD) {
-		fd = task_find_fd_map (task, fd);
-	}
+	fd = task_find_fd_map (task, fd);
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
@@ -328,9 +324,7 @@ syscall_write (int fd, void *buffer, unsigned size) {
 		task_exit (-1);
 	}
 
-	if (fd >= MAX_FD) {
-		fd = task_find_fd_map (task, fd);
-	}
+	fd = task_find_fd_map (task, fd);
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
@@ -358,9 +352,7 @@ syscall_seek (int fd, unsigned pos) {
 		return;
 	}
 
-	if (fd >= MAX_FD) {
-		fd = task_find_fd_map (task, fd);
-	}
+	fd = task_find_fd_map (task, fd);
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return;
@@ -381,9 +373,7 @@ syscall_tell (int fd) {
 		return -1;
 	}
 
-	if (fd >= MAX_FD) {
-		fd = task_find_fd_map (task, fd);
-	}
+	fd = task_find_fd_map (task, fd);
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
@@ -405,9 +395,7 @@ syscall_close (int fd) {
 		return;
 	}
 
-	if (fd >= MAX_FD) {
-		fd = task_find_fd_map (task, fd);
-	}
+	fd = task_find_fd_map (task, fd);
 
 	if (fd < 0 || fd >= MAX_FD) {
 		return;
@@ -422,21 +410,14 @@ syscall_close (int fd) {
 		lock_acquire (&process_filesys_lock);
 		file_close (task->fds[fd].file);
 		lock_release (&process_filesys_lock);
-		task->fds[fd].closed = true;
-		task->fds[fd].file = NULL;
-		task->fds[fd].fd_map = fd;
-		task->fds[fd].stdio = -1;
+		fd_init (&task->fds[fd], fd);
 		return;
 	}
 
 	/* Duplicated */
-	size_t parent_fd = task_find_original_fd (task, task->fds[fd].fd);
+	fd_t parent_fd = task_find_original_fd (task, task->fds[fd].fd);
 	if (task->fds[fd].duplicated) {
-		task->fds[fd].fd = fd;
-		task->fds[fd].fd_map = fd;
-		task->fds[fd].closed = true;
-		task->fds[fd].file = NULL;
-		task->fds[fd].duplicated = false;
+		fd_init (&task->fds[fd], fd);
 
 		if (parent_fd != fd) {
 			task->fds[parent_fd].dup_count -= 1;
@@ -448,12 +429,7 @@ syscall_close (int fd) {
 	if (task->fds[fd].dup_count > 0) {
 		task->fds[fd].closed = true;
 		task_inherit_fd (task, fd);
-		task->fds[fd].fd = fd;
-		task->fds[fd].fd_map = fd;
-		task->fds[fd].dup_count = 0;
-		task->fds[fd].duplicated = false;
-		task->fds[fd].file = NULL;
-		task->fds[fd].stdio = -1;
+		fd_init (&task->fds[fd], fd);
 	}
 }
 
@@ -465,10 +441,8 @@ syscall_dup2 (int oldfd, int newfd) {
 	if (task == NULL) {
 		return -1;
 	}
-
-	if (oldfd >= MAX_FD) {
-		oldfd = task_find_fd_map (task, oldfd);
-	}
+	
+	oldfd = task_find_fd_map (task, oldfd);
 
 	if (newfd >= MAX_FD) {
 		newfd = task_find_fd_map (task, newfd);
@@ -510,7 +484,7 @@ syscall_dup2 (int oldfd, int newfd) {
 	task->fds[newfd].fd_map = newfd_copy;
 	task->fds[newfd].dup_count = 0;
 	task->fds[newfd].stdio = task->fds[parent_fd].stdio;
-	return newfd;
+	return newfd_copy;
 }
 
 /* Reads a byte at user virtual address UADDR.

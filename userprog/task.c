@@ -145,7 +145,7 @@ task_cleanup (struct task *t) {
 }
 
 void 
-task_duplicate_fd (struct task *parent, struct task *child) {
+task_fork_fd (struct task *parent, struct task *child) {
     for (size_t i = 0; i < MAX_FD; i++) {
 	    if (parent->fds[i].file != NULL && !parent->fds[i].duplicated) {
 	    	child->fds[i].file = file_duplicate (parent->fds[i].file);
@@ -239,23 +239,13 @@ init_process (struct task *task) {
 	list_init (&task->children);
 
     for (size_t i = 0; i < 3; i++) {
-        task->fds[i].closed = false;
-        task->fds[i].fd = i;
-        task->fds[i].fd_map = i;
-		task->fds[i].duplicated = false;
-        task->fds[i].dup_count = 0;
-        task->fds[i].file = NULL;
+		fd_init (&task->fds[i], i);
+		task->fds[i].closed = false;
 		task->fds[i].stdio = i;
     }
 
 	for (size_t i = 3; i < MAX_FD; i++) {
-		task->fds[i].closed = true;
-		task->fds[i].fd = i;
-		task->fds[i].fd_map = i;
-        task->fds[i].duplicated = false;
-        task->fds[i].dup_count = 0;
-        task->fds[i].file = NULL;
-		task->fds[i].stdio = -1;
+		fd_init (&task->fds[i], i);
 	}
 
 	task->exit_code = 0;
@@ -314,4 +304,15 @@ task_inherit_fd (struct task *task, int fd) {
 	task->fds[successor].dup_count = task->fds[fd].dup_count - 1;
 	task->fds[successor].stdio = task->fds[fd].stdio;
 	return true;
+}
+
+void
+fd_init (struct fd *fdt, fd_t fd) {
+	fdt->closed = true;
+	fdt->fd = fd;
+	fdt->fd_map = fd;
+	fdt->dup_count = 0;
+	fdt->duplicated = false;
+	fdt->file = NULL;
+	fdt->stdio = -1;
 }
