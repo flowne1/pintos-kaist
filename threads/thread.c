@@ -194,19 +194,29 @@ thread_print_stats (void) {
 tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
+	struct thread* t = create_thread (name, priority, function, aux);
+	if (t == NULL) {
+		return TID_ERROR;
+	}
+
+	return t->tid;
+}
+
+struct thread *
+create_thread (const char *name, int priority,
+		thread_func *function, void *aux) {
 	struct thread *t;
-	tid_t tid;
 
 	ASSERT (function != NULL);
 
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
-		return TID_ERROR;
+		return NULL;
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
-	tid = t->tid = allocate_tid ();
+	t->tid = allocate_tid ();
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -220,13 +230,13 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-	thread_unblock (t);		// note : default value of newly initiated thread's status is BLOCKED
+	thread_unblock (t);		// Note : default value of newly initiated thread's status is BLOCKED
 
-	// for priority scheduling
-	// try preemption
+	// For priority scheduling
+	// Try preemption
 	thread_try_preemption ();
 
-	return tid;
+	return t;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -260,7 +270,6 @@ thread_sleep (int64_t ticks) {
 	}
 }
 
-
 // if wakeup ticks of thread in sleep_list is expired, move the thread to ready_list and set status to READY
 void
 thread_wakeup (int64_t ticks) {
@@ -279,9 +288,6 @@ thread_wakeup (int64_t ticks) {
 		e = next;
 	}
 }
-
-
-
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -386,7 +392,7 @@ thread_try_preemption (void) {
 
 	// Ensure that ready_list is sorted by priority before popping thread from ready_list
 	list_sort (&ready_list, &cmp_priority_greater, NULL);
-	if (thread_current ()->priority < list_entry (list_front(&ready_list), struct thread, elem)->priority)
+	if (!intr_context () && thread_current ()->priority < list_entry (list_front(&ready_list), struct thread, elem)->priority)
 		thread_yield ();
 }
 
@@ -477,6 +483,7 @@ thread_remove_donor (struct lock *lock) {
 		d_e = d_e_next;
 	}
 }
+
 // Calculate and reset priority of thread t
 void thread_recalc_priority (struct thread *t) {
 	enum intr_level old_level = intr_disable ();
@@ -637,7 +644,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
-	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);	// Note : Kernal stack pointer is set for thread, (4096 - 8)byte above *t
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
