@@ -208,11 +208,15 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
-	// // Initialize FD table
-	// t->fd_table = palloc_get_multiple (PAL_ZERO, 1);
-	// if (!t->fd_table) {
-	// 	return TID_ERROR;
-	// }
+	// Set relationship between parent and child
+	struct thread *parent = thread_current ();
+	list_push_back (&parent->child_list, &t->c_elem);
+
+	// Allocate page for FD table
+	t->fd_table = palloc_get_multiple (PAL_ZERO, 2);
+	if (!t->fd_table) {
+		return TID_ERROR;
+	}
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -225,10 +229,6 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	// When creating thread, set relationship between parent and child
-	struct thread *parent = thread_current ();
-	t->parent = parent;
-	list_push_back (&parent->child_list, &t->c_elem);
 
 	/* Add to run queue. */
 	thread_unblock (t);		// note : default value of newly initiated thread's status is BLOCKED
@@ -665,12 +665,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 	sema_init (&t->wait_sema, 0);			// Init wait_sema
 	sema_init (&t->free_sema, 0);			// Init free_sema
 	list_init (&t->fork_sema.waiters);
-	t->fdt[0].in_use = true;				// Init FD table
-	t->fdt[1].in_use = true;
-	for (int i = 2; i < MAX_FD; i++) {
-		t->fdt[i].in_use = false;
-		t->fdt[i].file = NULL;
-	}
 	list_init(&t->child_list);				// Init list of child
 	t->exit_status = 0;
 }
