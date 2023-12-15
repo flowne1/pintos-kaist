@@ -66,10 +66,9 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		// for priority scheduling
-		// insertion strategy should be modified properly : to wake up thread with higher priority first
+		// For priority scheduling
+		// Insertion strategy should be modified properly : to wake up thread with higher priority first
 		list_insert_ordered (&sema->waiters, &thread_current ()->elem, &cmp_priority_greater, NULL);
-		// list_push_back (&sema->waiters, &thread_current ()->elem);
 		thread_block ();
 	}
 	sema->value--;

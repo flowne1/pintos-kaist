@@ -12,6 +12,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "lib/fixed.h"	// Privately added
+#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -208,11 +209,6 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
-	// // Initialize FD table
-	// t->fd_table = palloc_get_multiple (PAL_ZERO, 1);
-	// if (!t->fd_table) {
-	// 	return TID_ERROR;
-	// }
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -354,11 +350,20 @@ thread_tid (void) {
 void
 thread_exit (void) {
 	ASSERT (!intr_context ());
-
 #ifdef USERPROG
 	process_exit ();
 #endif
-
+	struct thread *curr = thread_current ();
+	if (!list_empty (&curr->child_list)) {
+		struct list_elem *c_e = list_begin (&curr->child_list);
+		while (c_e != list_end (&curr->child_list)) {
+			struct thread *child = list_entry (c_e, struct thread, c_elem);
+			syscall_wait (child->tid);
+			c_e = list_next (c_e);
+		}
+	}
+	// printf("current thread_list size : %i\n", list_size (&thread_list));
+	
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
@@ -379,10 +384,9 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		// for priority scheduling
-		// insertion strategy should be modified properly : maintain the ready queue in descending order of priority
+		// For priority scheduling
 		list_insert_ordered (&ready_list, &(curr->elem), &cmp_priority_greater, NULL);
-		// list_push_back (&ready_list, &curr->elem);
+
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }

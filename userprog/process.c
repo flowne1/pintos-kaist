@@ -208,8 +208,6 @@ error:
 	sema_up (&current->fork_sema);
 	// If somehow error occured, exit current thread with code -1
 	syscall_exit (-1);
-	// current->exit_status = -1;
-	// thread_exit ();
 }
 
 /* Switch the current execution context to the f_name.
@@ -262,23 +260,13 @@ process_wait (tid_t child_tid) {
 		return -1;
 	}
 
+	// Wait till child finishing its exit
 	sema_down (&child->wait_sema);
-	
 	// After process_exit() of child is done, get exit status of child
 	int exit_status = child->exit_status;
 	// After getting exit_status, delete all relationship between parent and child
 	list_remove (&child->c_elem);
 	child->parent = NULL;
-	// // If child process has children, set its parent to initd(= tid 3)
-	// if (!list_empty (&child->child_list)) {
-	// 	struct list_elem *e = list_begin (&child->child_list);
-	// 	while (e != list_end (&child->child_list)) {
-	// 		struct thread *grand_child = list_entry (e, struct thread, c_elem);
-	// 		struct thread *init = thread_find_by_tid (3);
-	// 		grand_child->parent = init;
-	// 	}
-	// }
-
 	sema_up (&child->free_sema);
 
 	return exit_status;
@@ -298,13 +286,13 @@ process_exit (void) {
 	// Close running file
 	file_close (curr->file_running);
 
+	// Clean up process
+	process_cleanup ();
+
 	// Signal waiting parent to wake up
 	sema_up (&curr->wait_sema);
 	// Sleep till parent finishing its job
 	sema_down (&curr->free_sema);
-
-	// Clean up process
-	process_cleanup ();
 }
 
 /* Free the current process's resources. */

@@ -19,7 +19,7 @@ static void syscall_halt (void);
 void syscall_exit (int status);
 static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
 static int syscall_exec (const char *cmd_line);
-static int syscall_wait (tid_t tid);
+int syscall_wait (tid_t tid);
 // File-related syscalls
 static bool syscall_create (const char *file, unsigned initial_size);
 static bool syscall_remove (const char *file);
@@ -29,7 +29,7 @@ static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned pos);
 static unsigned syscall_tell (int fd);
-static void syscall_close (int fd);
+void syscall_close (int fd);
 // Functions for implementing syscalls
 static bool is_valid_address (void *addr);
 static int allocate_fd (struct file *file);
@@ -163,7 +163,7 @@ syscall_exec (const char *cmd_line) {
 	}
 }
 
-static int 
+int 
 syscall_wait (tid_t tid) {
 	process_wait (tid);
 }
@@ -338,7 +338,7 @@ syscall_tell (int fd) {
 	return file_tell (f);
 }
 
-static void 
+void 
 syscall_close (int fd) {
 	// Check if fd is in proper boundary
 	if (fd <= 1 || fd >= MAX_FD) {
