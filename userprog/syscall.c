@@ -258,6 +258,7 @@ syscall_read (int fd, void *buffer, unsigned size) {
 	// If fd is for STDIN, read from user keyboard input
 	int read_bytes;
 	if (fd == 0) {
+		lock_acquire (&filesys_lock);
 		for (int i = 0; i < size; i++) {
 			uint8_t c = input_getc();
 			((char *)buffer)[i] = c;
@@ -266,6 +267,7 @@ syscall_read (int fd, void *buffer, unsigned size) {
 				break;
 			}
 		}
+		lock_release (&filesys_lock);
 		return read_bytes;
 	}
 	// Else, read from file
