@@ -1,6 +1,7 @@
 #ifndef VM_VM_H
 #define VM_VM_H
 #include <stdbool.h>
+#include <hash.h>
 #include "threads/palloc.h"
 
 enum vm_type {
@@ -40,12 +41,19 @@ struct thread;
  * This is kind of "parent class", which has four "child class"es, which are
  * uninit_page, file_page, anon_page, and page cache (project4).
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
+ // This struct is named 'page' by pintOS, but we will use this as 'page table entry'
 struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
+	bool is_present;				// Is present in physical memory?
+	bool is_dirty;					// Is dirty(changed)?
+	bool spv_only;					// For all or supervisor only?
+	bool is_writable;				// Is allowed to write?(if not, read-only)
+	bool is_accessed;				// Check if page is accessed recently, used for page replacement policy
+	struct hash_elem h_elem; 		// Hash elem used for hash table
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -84,7 +92,18 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
+// struct page_table_entry {
+// 	struct frame frame;				// Data of page
+// 	bool is_present;				// Is present in physical memory?
+// 	bool is_dirty;					// Is dirty(changed)?
+// 	bool spv_only;					// For all or supervisor only?
+// 	bool is_writable;				// Is allowed to write?(if not, read-only)
+// 	bool is_accessed;				// Check if page is accessed recently, used for page replacement policy
+// 	struct hash_elem h_elem; 		// Hash elem used for hash table
+// };
+
 struct supplemental_page_table {
+	struct hash hash_ptes;			// Page table entries of spt, have struct page for its element
 };
 
 #include "threads/thread.h"
