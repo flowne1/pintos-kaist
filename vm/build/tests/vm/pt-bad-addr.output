@@ -4,7 +4,7 @@ Kernel command line: -q -f put pt-bad-addr run pt-bad-addr
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  78,540,800 loops/s.
+Calibrating timer...  117,760,000 loops/s.
 hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 102 sector (51 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -14,24 +14,15 @@ Boot complete.
 Putting 'pt-bad-addr' into the file system...
 Executing 'pt-bad-addr':
 (pt-bad-addr) begin
-Page fault at 0x4000000: not present error reading page in user context.
-pt-bad-addr: dying due to interrupt 0x0e (#PF Page-Fault Exception).
-Interrupt 0x0e (#PF Page-Fault Exception) at rip=4000f1
- cr2=0000000004000000 error=               4
-rax 0000000004000000 rbx 0000800424207800 rcx 00000000000000ff rdx 0000000000000000
-rsp 000000004747ff90 rbp 000000004747ff90 rsi 000000000060506e rdi 000000000060515f
-rip 00000000004000f1 r8 0000000000000000  r9 0000000000000000 r10 0000000000000000
-r11 0000000000000206 r12 00008004242f1800 r13 0000800420ad3000 r14 00008004241f1000
-r15 0000010424100000 rflags 00000212
-es: 001b ds: 001b cs: 0023 ss: 001b
+pt-bad-addr: exit(-1)
 Execution of 'pt-bad-addr' complete.
-Timer: 66 ticks
-Thread: 30 idle ticks, 29 kernel ticks, 7 user ticks
+Timer: 67 ticks
+Thread: 30 idle ticks, 35 kernel ticks, 2 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 80 reads, 232 writes
 hd1:0: 102 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 1574 characters output
+Console: 946 characters output
 Keyboard: 0 keys pressed
 Exception: 1 page faults
 Powering off...

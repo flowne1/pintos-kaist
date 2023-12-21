@@ -11,6 +11,7 @@
 #include "filesys/filesys.h"
 #include "threads/palloc.h"
 #include "userprog/process.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -366,11 +367,15 @@ syscall_close (int fd) {
 
 // Validates given virtual address 
 // 'Valid address' means 1. not NULL 2. located in user area 3. mapped properly
+// From project3 onwards, valid addr might not be in pml4, due to lazy loading
 static bool
 is_valid_address (void *addr) {
+	// return addr != NULL 
+	// && is_user_vaddr (addr)
+	// && pml4_get_page(thread_current ()->pml4, addr) != NULL;}
 	return addr != NULL 
-	&& is_user_vaddr (addr) 
-	&& pml4_get_page(thread_current ()->pml4, addr) != NULL;
+	&& is_user_vaddr (addr)
+	&& spt_find_page (&thread_current ()->spt, addr);
 }
 
 // Allocate empty FD of current process to given file

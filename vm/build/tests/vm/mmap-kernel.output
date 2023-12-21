@@ -4,7 +4,7 @@ Kernel command line: -q -f put mmap-kernel put sample.txt run mmap-kernel
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  130,867,200 loops/s.
+Calibrating timer...  88,985,600 loops/s.
 hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 107 sector (53 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -17,13 +17,13 @@ Executing 'mmap-kernel':
 (mmap-kernel) begin
 (mmap-kernel) open "sample.txt"
 (mmap-kernel) try to mmap over kernel 0
-Kernel PANIC at ../../userprog/syscall.c:125 in syscall_handler(): Unknown syscall syscall_14
-Call stack: 0x8004218654 0x800421d820 0x800421d4a6 0x400196 0x400d4d 0x400d96 0Interrupt 0x0d (#GP General Protection Exception) at rip=800421561e
+Kernel PANIC at ../../userprog/syscall.c:126 in syscall_handler(): Unknown syscall syscall_14
+Call stack: 0x8004218654 0x800421d83c 0x800421d4c2 0x400196 0x400d4d 0x400d96 0Interrupt 0x0d (#GP General Protection Exception) at rip=800421561e
  cr2=000000000040303f error=               0
 rax 0000800424161000 rbx 0000800424207800 rcx 00000080040b8000 rdx 00000000000003d4
 rsp 0000008004241e80 rbp 0000008004241e90 rsi 000000000000cf0f rdi 0000000000000000
 rip 000000800421561e r8 0000008004241d98  r9 000000800421bacd r10 0000000000000002
-r11 0000000000000202 r12 000000800421d57d r13 0000800420ad3000 r14 00008004241f1000
+r11 0000000000000202 r12 000000800421d599 r13 0000800420ad3000 r14 00008004241f1000
 r15 0000010424100000 rflags 00000006
 es: 001b ds: 001b cs: 0008 ss: 0010
 Kernel PANIC recursion at ../../userprog/exception.c:98 in kill().
@@ -33,5 +33,5 @@ hd0:0: 0 reads, 0 writes
 hd0:1: 112 reads, 252 writes
 hd1:0: 107 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 1781 characters output
+Console: 1780 characters output
 Key

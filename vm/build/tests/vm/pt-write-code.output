@@ -4,7 +4,7 @@ Kernel command line: -q -f put pt-write-code run pt-write-code
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  130,867,200 loops/s.
+Calibrating timer...  117,760,000 loops/s.
 hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 102 sector (51 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -14,24 +14,15 @@ Boot complete.
 Putting 'pt-write-code' into the file system...
 Executing 'pt-write-code':
 (pt-write-code) begin
-Page fault at 0x4000e8: rights violation error writing page in user context.
-pt-write-code: dying due to interrupt 0x0e (#PF Page-Fault Exception).
-Interrupt 0x0e (#PF Page-Fault Exception) at rip=4000f6
- cr2=00000000004000e8 error=               7
-rax 00000000004000e8 rbx 0000800424207800 rcx 00000000000000ff rdx 0000000000000000
-rsp 000000004747ff90 rbp 000000004747ff90 rsi 000000000060508e rdi 000000000060517f
-rip 00000000004000f6 r8 0000000000000000  r9 0000000000000000 r10 0000000000000000
-r11 0000000000000206 r12 00008004242f1800 r13 0000800420ad3000 r14 00008004241f1000
-r15 0000010424100000 rflags 00000212
-es: 001b ds: 001b cs: 0023 ss: 001b
+pt-write-code: exit(-1)
 Execution of 'pt-write-code' complete.
-Timer: 74 ticks
-Thread: 30 idle ticks, 34 kernel ticks, 10 user ticks
+Timer: 67 ticks
+Thread: 30 idle ticks, 36 kernel ticks, 2 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 80 reads, 232 writes
 hd1:0: 102 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 1594 characters output
+Console: 960 characters output
 Keyboard: 0 keys pressed
 Exception: 1 page faults
 Powering off...

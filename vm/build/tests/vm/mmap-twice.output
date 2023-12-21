@@ -4,7 +4,7 @@ Kernel command line: -q -f put mmap-twice put sample.txt run mmap-twice
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  111,206,400 loops/s.
+Calibrating timer...  52,531,200 loops/s.
 hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 109 sector (54 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -17,21 +17,21 @@ Executing 'mmap-twice':
 (mmap-twice) begin
 (mmap-twice) open "sample.txt" #0
 (mmap-twice) mmap "sample.txt" #0 at 0x10000000
-Kernel PANIC at ../../userprog/syscall.c:125 in syscall_handler(): Unknown syscall syscall_14
-Call stack: 0x8004218654 0x800421d820 0x800421d4a6 0x4001db 0x400d71 0x400dba 0Interrupt 0x0d (#GP General Protection Exception) at rip=800421561e
+Kernel PANIC at ../../userprog/syscall.c:126 in syscall_handler(): Unknown syscall syscall_14
+Call stack: 0x8004218654 0x800421d83c 0x800421d4c2 0x4001db 0x400d71 0x400dba 0Interrupt 0x0d (#GP General Protection Exception) at rip=800421561e
  cr2=000000000040301d error=               0
 rax 0000800424161000 rbx 0000800424207800 rcx 00000080040b8000 rdx 00000000000003d4
 rsp 0000008004241e80 rbp 0000008004241e90 rsi 000000000000cf0f rdi 0000000000000000
 rip 000000800421561e r8 0000008004241d98  r9 000000800421bacd r10 0000000000000002
-r11 0000000000000206 r12 000000800421d57d r13 0000800420ad3000 r14 00008004241f1000
+r11 0000000000000206 r12 000000800421d599 r13 0000800420ad3000 r14 00008004241f1000
 r15 0000010424100000 rflags 00000006
 es: 001b ds: 001b cs: 0008 ss: 0010
 Kernel PANIC recursion at ../../userprog/exception.c:98 in kill().
-Timer: 68 ticks
-Thread: 30 idle ticks, 35 kernel ticks, 3 user ticks
+Timer: 75 ticks
+Thread: 30 idle ticks, 42 kernel ticks, 3 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 113 reads, 256 writes
 hd1:0: 109 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 1786 characters output
+Console: 1785 characters output
 Key

@@ -7,7 +7,6 @@
 void
 test_main (void) 
 {
-  printf("hi\n");
   int handle = open ("sample.txt");
   if (handle < 2)
     fail ("open() returned %d", handle);

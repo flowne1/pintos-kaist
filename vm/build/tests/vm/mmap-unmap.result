@@ -1,10 +1,10 @@
 FAIL
-Kernel panic in run: PANIC at ../../userprog/syscall.c:125 in syscall_handler(): Unknown syscall syscall_14
-Call stack: 0x8004218654 0x800421d820 0x800421d4a6 0x400186 0x400ce3 0x400d2c
+Kernel panic in run: PANIC at ../../userprog/syscall.c:126 in syscall_handler(): Unknown syscall syscall_14
+Call stack: 0x8004218654 0x800421d83c 0x800421d4c2 0x400186 0x400ce3 0x400d2c
 Translation of call stack:
 0x0000008004218654: debug_panic (lib/kernel/debug.c:32)
-0x000000800421d820: syscall_handler (userprog/syscall.c:128)
-0x000000800421d4a6: no_sti (userprog/syscall-entry.o:?)
+0x000000800421d83c: syscall_handler (userprog/syscall.c:129)
+0x000000800421d4c2: no_sti (userprog/syscall-entry.o:?)
 0x0000000000400186: (unknown)
 0x0000000000400ce3: (unknown)
 0x0000000000400d2c: (unknown)
