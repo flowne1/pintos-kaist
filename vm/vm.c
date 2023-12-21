@@ -55,17 +55,51 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
+		/* TODO: Create the page, fetch the initializer according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 
+		// Create struct page
+		struct page *p = malloc (sizeof (struct page));	// malloc..?
+		if (!p) {
+			return false;
+		}
+
+		// Select proper initializer with page type
+		int type_no_marker = VM_TYPE (type);
+		bool (*initializer) (struct page *, enum vm_type, void *);
+		switch (type_no_marker) {
+			case VM_ANON:
+				initializer = anon_initializer;
+				break;
+			case VM_FILE:
+				initializer = file_backed_initializer;
+				break;
+			case VM_PAGE_CACHE:
+				PANIC ("type : VM_PAGE_CACHE\n");
+				break;
+			default:
+				PANIC ("not defined page type\n");
+				break;
+		}
+
+		// Call uninit_new, creating "uninit" page struct and initialize it 
+		uninit_new (p, upage, init, type, aux, initializer);
+
+		// Modify fields of page, if needed
+		p->is_writable = writable; 
+
 		/* TODO: Insert the page into the spt. */
+		if (!spt_insert_page (spt, p)) {
+			free (p);
+			return false;
+		}	
 	}
-err:
-	return false;
+
+	// All tasks done, return true
+	return true;
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
@@ -179,13 +213,34 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
+vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+	// Get page from spt
+	struct page *page = spt_find_page (spt, addr);
+	if (!page) {
+		return false;
+	}
+	bool page_is_writable = page->is_writable;
+	bool page_for_spv_only = page->spv_only;
 
+	// If trying to write r/o page, it is true fault
+	if (!not_present) {
+		return false;
+	}
+
+	// If we are trying to write but page is not writable, it is true fault
+	if (write && !page_is_writable) {
+		return false;
+	}
+
+	// If accessed by user, but page is for spv only, it is true fault
+	if (user && page_for_spv_only) {
+		return false;
+	}
+
+	// Else, allocate frame to page
 	return vm_do_claim_page (page);
 }
 

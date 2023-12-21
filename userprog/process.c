@@ -28,6 +28,13 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+struct lazy_load_info {
+	struct file *file;
+	off_t ofs;
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+};
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -68,11 +75,9 @@ initd (void *f_name) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-
 	process_init ();
-
+	
 	if (process_exec (f_name) < 0)
-		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
 
@@ -216,7 +221,6 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
-
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -224,13 +228,11 @@ process_exec (void *f_name) {
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
-
+	
 	/* We first kill the current context */
 	process_cleanup ();
-
 	/* And then load the binary */
 	success = load (file_name, &_if);
-
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -435,7 +437,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	char *file_name_token = argv_tokens[0];
-	file = filesys_open (argv_tokens[0]);
+	file = filesys_open (file_name_token);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name_token);
 		goto done;
@@ -706,6 +708,33 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+
+	// Type casting to original struct pointer
+	struct lazy_load_info *info = (struct lazy_load_info *)aux;
+
+	// Get info for loading
+	struct file *file = info->file;
+	off_t ofs = info->ofs;
+	size_t page_read_bytes = info->page_read_bytes;
+	size_t page_zero_bytes = info->page_zero_bytes;
+	void *kpage = page->frame->kva;
+
+	// Seek where to read file
+	file_seek (file, ofs);
+
+	/* Load this page. (adapted from load_segment)*/
+	if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes) {
+		// palloc_free_page (kpage);  // necessary?
+		free (aux);
+		aux = NULL;
+		return false;
+	}
+	// Set rest of pages to zero
+	memset (kpage + page_read_bytes, 0, page_zero_bytes);
+	
+	free (aux);
+	aux = NULL;
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -737,15 +766,26 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+		// void *aux = NULL;
+		struct lazy_load_info *aux = malloc (sizeof (struct lazy_load_info));		// Not sure when to use this info.. malloc?
+		if (!aux) {
 			return false;
+		}
+		aux->file = file;
+		aux->ofs = ofs;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
+
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, aux)) {
+			free (aux);
+			return false;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += PGSIZE;
 	}
 	return true;
 }
@@ -753,7 +793,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool
 setup_stack (struct intr_frame *if_) {
-	bool success = false;
+	// bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
@@ -761,6 +801,19 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	return success;
+	// Create struct page and allocate page
+	enum vm_type type = (VM_ANON | VM_MARKER_STACK);
+	if (!vm_alloc_page_with_initializer (type, stack_bottom, true, NULL, NULL)) {
+		return false;
+	}
+
+	// Claim page immediately, not waiting for PF
+	if (!vm_claim_page (stack_bottom)) {
+		return false;
+	}
+
+	// After all tasks done, set rsp and return true
+	if_->rsp = USER_STACK;
+	return true;
 }
 #endif /* VM */

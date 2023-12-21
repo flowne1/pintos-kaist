@@ -1,0 +1,37 @@
+Kernel command line: -q -f put mmap-ro put large.txt run mmap-ro
+0 ~ 9fc00 1
+100000 ~ 13e0000 1
+Pintos booting with: 
+	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
+	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
+Calibrating timer...  157,081,600 loops/s.
+hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
+hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
+hd1:0: detected 4,018 sector (1 MB) disk, model "QEMU HARDDISK", serial "QM00003"
+hd1:1: detected 8,064 sector (3 MB) disk, model "QEMU HARDDISK", serial "QM00004"
+Formatting file system...done.
+Boot complete.
+Putting 'mmap-ro' into the file system...
+Putting 'large.txt' into the file system...
+Executing 'mmap-ro':
+(mmap-ro) begin
+(mmap-ro) open "large.txt"
+(mmap-ro) mmap "large.txt" with writable=0
+Kernel PANIC at ../../userprog/syscall.c:125 in syscall_handler(): Unknown syscall syscall_14
+Call stack: 0x8004218654 0x800421d820 0x800421d4a6 0x400189 0x400cc9 0x400d12 0Interrupt 0x0d (#GP General Protection Exception) at rip=800421561e
+ cr2=0000000000403000 error=               0
+rax 0000800424161000 rbx 0000800424207800 rcx 00000080040b8000 rdx 00000000000003d4
+rsp 0000008004241e80 rbp 0000008004241e90 rsi 000000000000cf0f rdi 0000000000000000
+rip 000000800421561e r8 0000008004241d98  r9 000000800421bacd r10 0000000000000002
+r11 0000000000000206 r12 000000800421d57d r13 0000800420ad3000 r14 00008004241f1000
+r15 0000010424100000 rflags 00000006
+es: 001b ds: 001b cs: 0008 ss: 0010
+Kernel PANIC recursion at ../../userprog/exception.c:98 in kill().
+Timer: 158 ticks
+Thread: 30 idle ticks, 125 kernel ticks, 3 user ticks
+hd0:0: 0 reads, 0 writes
+hd0:1: 111 reads, 8074 writes
+hd1:0: 4018 reads, 0 writes
+hd1:1: 0 reads, 0 writes
+Console: 1762 characters output
+Key

@@ -48,10 +48,11 @@ uninit_initialize (struct page *page, void *kva) {
 	struct uninit_page *uninit = &page->uninit;
 
 	/* Fetch first, page_initialize may overwrite the values */
-	vm_initializer *init = uninit->init;
-	void *aux = uninit->aux;
+	vm_initializer *init = uninit->init;		// Lazy_load_segment
+	void *aux = uninit->aux;					// 
 
 	/* TODO: You may need to fix this function. */
+	// Initialize page, and lazy-load
 	return uninit->page_initializer (page, uninit->type, kva) &&
 		(init ? init (page, aux) : true);
 }

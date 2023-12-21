@@ -20,11 +20,17 @@
             ],
             "args": [
                 "--gdb",
+                "-v",
+                "-k",
+                //"-T", "60",
+                "-m", "20",
+                "--fs-disk=10",
+                "-p", "tests/userprog/open-normal:open-normal",
+                "--swap-disk=4",
                 "--",
                 "-q",
-                "-mlfqs",
-                "run",
-                "${input:test}"
+                "-f", "run",
+                "open-normal"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/${input:project}/build"

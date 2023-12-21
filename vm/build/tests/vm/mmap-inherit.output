@@ -1,0 +1,38 @@
+Kernel command line: -q -f put mmap-inherit put sample.txt put child-inherit run mmap-inherit
+0 ~ 9fc00 1
+100000 ~ 13e0000 1
+Pintos booting with: 
+	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
+	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
+Calibrating timer...  130,867,200 loops/s.
+hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
+hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
+hd1:0: detected 215 sector (107 kB) disk, model "QEMU HARDDISK", serial "QM00003"
+hd1:1: detected 8,064 sector (3 MB) disk, model "QEMU HARDDISK", serial "QM00004"
+Formatting file system...done.
+Boot complete.
+Putting 'mmap-inherit' into the file system...
+Putting 'sample.txt' into the file system...
+Putting 'child-inherit' into the file system...
+Executing 'mmap-inherit':
+(mmap-inherit) begin
+(mmap-inherit) open "sample.txt"
+(mmap-inherit) mmap "sample.txt"
+Kernel PANIC at ../../userprog/syscall.c:125 in syscall_handler(): Unknown syscall syscall_14
+Call stack: 0x8004218654 0x800421d820 0x800421d4a6 0x400190 0x400e05 0x400e4e 0Interrupt 0x0d (#GP General Protection Exception) at rip=800421561e
+ cr2=0000000000402242 error=               0
+rax 0000800424161000 rbx 0000800424207800 rcx 00000080040b8000 rdx 00000000000003d4
+rsp 0000008004241e80 rbp 0000008004241e90 rsi 000000000000cf0f rdi 0000000000000000
+rip 000000800421561e r8 0000008004241d98  r9 000000800421bacd r10 0000000000000002
+r11 0000000000000202 r12 000000800421d57d r13 0000800420ad3000 r14 00008004241f1000
+r15 0000010424100000 rflags 00000006
+es: 001b ds: 001b cs: 0008 ss: 0010
+Kernel PANIC recursion at ../../userprog/exception.c:98 in kill().
+Timer: 68 ticks
+Thread: 30 idle ticks, 35 kernel ticks, 3 user ticks
+hd0:0: 0 reads, 0 writes
+hd0:1: 143 reads, 478 writes
+hd1:0: 215 reads, 0 writes
+hd1:1: 0 reads, 0 writes
+Console: 1847 characters output
+Key

@@ -9,6 +9,7 @@
         "stdbool.h": "c",
         "file.h": "c",
         "stddef.h": "c",
-        "vm.h": "c"
+        "vm.h": "c",
+        "loader.h": "c"
     }
 }
