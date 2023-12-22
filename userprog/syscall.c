@@ -34,6 +34,7 @@ void syscall_close (int fd);
 // Functions for implementing syscalls
 static bool is_valid_address (void *addr);
 static int allocate_fd (struct file *file);
+struct file *find_file_by_fd (int fd);
 
 struct lock filesys_lock;	// Privately added
 
@@ -223,16 +224,16 @@ syscall_open (const char *file) {
 static int 
 syscall_filesize (int fd) {
 	struct thread *curr = thread_current ();
-	struct file *f;
 	int file_size = -1;
 
 	// Check if fd is in proper boundary
 	if (fd < 0 || fd >= MAX_FD) {
 		return -1;
 	}
-	// Set file_size, if fd is opened in FD table
-	if (curr->fdt[fd].in_use) {
-		f = curr->fdt[fd].file;
+	
+	struct file *f = find_file_by_fd (fd);
+	// If fd is opened in FD table, get file size
+	if (f) {
 		file_size = file_length (f); 
 	}
 
@@ -247,9 +248,6 @@ syscall_read (int fd, void *buffer, unsigned size) {
 		syscall_exit (-1);
 	}
 	if (fd < 0 || fd >= MAX_FD) {
-		return -1;
-	}
-	if (!thread_current ()->fdt[fd].in_use) {
 		return -1;
 	}
 	if (size == 0) {
@@ -272,7 +270,7 @@ syscall_read (int fd, void *buffer, unsigned size) {
 		return read_bytes;
 	}
 	// Else, read from file
-	struct file *f = thread_current ()->fdt[fd].file;
+	struct file *f = find_file_by_fd (fd);
 	if (!f) {
 		return -1;
 	}
@@ -302,12 +300,12 @@ syscall_write (int fd, void *buffer, unsigned size) {
 	}
 
 	struct thread *curr = thread_current ();
-	// Check if given FD is in use
-	if (!curr->fdt[fd].in_use) {
+	struct file *f = find_file_by_fd (fd);
+	if (!f) {
 		return -1;
 	}
 	lock_acquire (&filesys_lock);
-	int written_bytes = file_write (curr->fdt[fd].file, buffer, size);
+	int written_bytes = file_write (f, buffer, size);
 	lock_release (&filesys_lock);
 	return written_bytes;
 }
@@ -318,11 +316,11 @@ syscall_seek (int fd, unsigned pos) {
 	if (fd < 0 || fd >= MAX_FD) {
 		return;
 	}
-	if (!thread_current ()->fdt[fd].in_use) {
+	struct file *f = find_file_by_fd (fd);
+	if (!f) {
 		return;
 	}
 
-	struct file *f = thread_current ()->fdt[fd].file;
 	file_seek (f, pos);
 }
 
@@ -332,11 +330,11 @@ syscall_tell (int fd) {
 	if (fd < 0 || fd >= MAX_FD) {
 		return;
 	}
-	if (!thread_current ()->fdt[fd].in_use) {
+	struct file *f = find_file_by_fd (fd);
+	if (!f) {
 		return;
 	}
 
-	struct file *f = thread_current ()->fdt[fd].file;
 	return file_tell (f);
 }
 
@@ -348,16 +346,16 @@ syscall_close (int fd) {
 	}
 
 	struct thread *curr = thread_current ();
-	// Check if fd is not in use
-	if (!curr->fdt[fd].in_use) {
+	struct file *f = find_file_by_fd (fd);
+	if (!f) {
 		return;
 	}
 
 	lock_acquire (&filesys_lock);
 
 	// Close opened file
-	file_close (curr->fdt[fd].file);
-	curr->fdt[fd].in_use = false;
+	curr->fd_table[fd] = NULL;	// Close for fd table
+	file_close (f);				// Close for filesystem
 
 	lock_release (&filesys_lock);
 
@@ -384,12 +382,21 @@ allocate_fd (struct file *file) {
 	int fd = -1;
 	// Search empty FD
 	for (int i = 2; i < MAX_FD; i++) {
-		if (!curr->fdt[i].in_use) {
-			curr->fdt[i].in_use = true;
-			curr->fdt[i].file = file;
+		if (curr->fd_table[i] == NULL) {	// If Empty, allocate file to the FD
+			curr->fd_table[i] = file;
 			fd = i;
 			break;
 		}
 	}
 	return fd;
+}
+
+// Given fd, return file if fd is opened in current process' fd table
+struct file *
+find_file_by_fd (int fd) {
+	struct thread *curr = thread_current ();
+	if (fd <= 1 || fd >= MAX_FD) {
+		return NULL;
+	}
+	return curr->fd_table[fd];
 }

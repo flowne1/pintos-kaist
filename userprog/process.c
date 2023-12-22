@@ -188,10 +188,11 @@ __do_fork (void *aux) {
 
 	// Duplicate FD table of parent, skipping STD I/O
 	for (int i = 2; i < MAX_FD; i ++) {
-		if (parent->fdt[i].in_use) {	// If FD of parent is in use
-			current->fdt[i].in_use = true;
-			current->fdt[i].file = file_duplicate (parent->fdt[i].file);
+		struct file *f = parent->fd_table[i];
+		if (!f) {
+			continue;
 		}
+		current->fd_table[i] = file_duplicate (f);
 	}
 
 	process_init ();
@@ -236,6 +237,24 @@ process_exec (void *f_name) {
 	NOT_REACHED ();
 }
 
+// Find child of current thread(process) using tid
+struct thread *
+find_child_by_tid (tid_t tid) {
+	struct thread *curr = thread_current ();
+	if (list_empty (&curr->child_list)) {
+		return NULL;
+	}
+
+	struct list_elem *c_e = list_begin (&curr->child_list);
+	while (c_e != list_end (&curr->child_list)) {
+		struct thread *child = list_entry (c_e, struct thread, c_elem);
+		if (child->tid == tid) {
+			return child;
+		}
+		c_e = list_next (c_e);
+	}
+	return NULL;
+}
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -249,9 +268,9 @@ process_exec (void *f_name) {
 int
 process_wait (tid_t child_tid) {
 	struct thread *parent = thread_current ();
-	struct thread *child = thread_find_by_tid (child_tid);
+	struct thread *child = find_child_by_tid (child_tid);
 	// Return if child is not found, or not parent-child relationship
-	if (!child || child->parent != parent) {
+	if (!child) {
 		return -1;
 	}
 
@@ -261,7 +280,6 @@ process_wait (tid_t child_tid) {
 	int exit_status = child->exit_status;
 	// After getting exit_status, delete all relationship between parent and child
 	list_remove (&child->c_elem);
-	child->parent = NULL;
 	sema_up (&child->free_sema);
 
 	return exit_status;
@@ -273,11 +291,14 @@ process_exit (void) {
 	struct thread *curr = thread_current ();
 	// Close all opened file
 	for (int i = 2; i < MAX_FD; i++) {
-		if (curr->fdt[i].in_use) {
-			file_close (curr->fdt[i].file);
-			curr->fdt[i].in_use = false;
+		struct file *f = curr->fd_table[i];
+		if (f) {
+			file_close (f);
 		}
 	}
+	// Free pages of FD table
+	palloc_free_multiple (curr->fd_table, 2);
+	
 	// Close running file
 	file_close (curr->file_running);
 

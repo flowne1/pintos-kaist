@@ -34,11 +34,11 @@ typedef int tid_t;
 //
 #define MAX_FD 64						// Capacitiy of FD table
 
-// FD table struct
-typedef struct fd_table {
-	bool in_use;
-	struct file *file;
-};
+// // FD table struct
+// typedef struct fd_table {
+// 	bool in_use;
+// 	struct file *file;
+// };
 
 
 /* A kernel thread or user process.
@@ -116,13 +116,14 @@ struct thread {
 	struct list_elem t_elem;			// List elem for 'List of all threads'
 
 	// Privately added for userprog
-	struct fd_table fdt[MAX_FD];		// FD table
+	// struct fd_table fdt[MAX_FD];		// FD table
+	struct file **fd_table;
 	struct file *file_running;
 	struct intr_frame parent_if;		// if_ info of current thread, be passed to child
 	struct semaphore fork_sema;			// Semaphore used for fork
 	struct semaphore wait_sema;			// Semaphore used for wait
 	struct semaphore free_sema;
-	struct thread *parent;				// Parent of the process(thread?)
+	// struct thread *parent;				// Parent of the process(thread?)
 	struct list child_list;				// List of forked child
 	struct list_elem c_elem;			// List elem for 'child_list'
 	int exit_status;					// Exit status of process
