@@ -280,7 +280,6 @@ syscall_read (int fd, void *buffer, unsigned size) {
 	lock_acquire (&filesys_lock);
 	read_bytes = file_read (f, buffer, size);
 	lock_release (&filesys_lock);
-
 	return read_bytes;
 }
 
