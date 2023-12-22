@@ -7,10 +7,12 @@
 #include "threads/vaddr.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "userprog/process.h"
 
 // Privately added
 unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED);
 bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
+void hash_action_destroy_page (struct hash_elem *e, void *aux);
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -81,7 +83,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				PANIC ("type : VM_PAGE_CACHE\n");
 				break;
 			default:
-				PANIC ("not defined page type\n");
+				PANIC ("not defined page type : %i\n", type_no_marker);
 				break;
 		}
 
@@ -179,11 +181,6 @@ vm_evict_frame (void) {
 static struct frame *
 vm_get_frame (void) {
 	/* TODO: Fill this function. */
-	// Gets a new physical page from the user pool by calling palloc_get_page. 
-	// When successfully got a page from the user pool, also allocates a frame, initialize its members, and returns it.
-	// After you implement vm_get_frame, you have to allocate all user space pages (PALLOC_USER) through this function. 
-	// You don't need to handle swap out for now in case of page allocation failure. 
-	// Just mark those case with PANIC ("todo") for now.
 	void *kva = palloc_get_page (PAL_USER | PAL_ZERO);
 	if (!kva) {
 		PANIC ("todo");
@@ -293,22 +290,68 @@ vm_do_claim_page (struct page *page) {
 
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	// Init struct hash in spt
+supplemental_page_table_init (struct supplemental_page_table *spt) {
 	hash_init (&spt->hash_ptes, &page_hash, &page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
+	// Note : This function is called by forked process' context
+	// Init hash iterator for src spt
+	struct hash_iterator h_i;
+	hash_first (&h_i, &src->hash_ptes);
+
+	// Traverse src spt, find src page and copy
+	while (hash_next (&h_i)) {					
+		struct page *src_p = hash_entry (hash_cur (&h_i), struct page, h_elem);		// Get page using iterator
+		enum vm_type type = src_p->operations->type;								
+		vm_initializer *init = NULL;
+		void *aux = NULL;
+		bool need_claim = (type != VM_UNINIT);	// If page is already init'd, need claim
+
+		// If page is uninitialized(has no frame), fetch init data before allocating page
+		if (type == VM_UNINIT) {
+			type = src_p->uninit.type;
+			init = src_p->uninit.init;
+			// Note : 'aux' is memory allocated struct that can be freed, so malloc & copy all contents
+			aux = (struct lazy_load_info *)malloc (sizeof (struct lazy_load_info));
+			memcpy (aux, src_p->uninit.aux, sizeof(struct lazy_load_info));
+		}
+
+		// Allocate page
+		if (!vm_alloc_page_with_initializer (type, src_p->va, src_p->is_writable, init, aux)) {
+			continue;
+		}
+
+		// Do claim, if necessary
+		if (need_claim) {
+			if (!vm_claim_page (src_p->va)) {
+				continue;
+			}
+			struct page *dst_p = spt_find_page (dst, src_p->va);
+			memcpy (dst_p->frame->kva, src_p->frame->kva, PGSIZE);
+		}
+	}
+	
+	// All copy tasks done, return true
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	hash_clear (&spt->hash_ptes, &hash_action_destroy_page);
+}
+
+void
+hash_action_destroy_page (struct hash_elem *e, void *aux) {
+    struct page* page = hash_entry (e, struct page, h_elem);
+    if (page) {
+		vm_dealloc_page (page);
+	}
 }
 
 /* Returns a hash value for page p. */

@@ -4,7 +4,7 @@ Kernel command line: -q -f put exec-once put child-simple run exec-once
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  71,987,200 loops/s.
+Calibrating timer...  130,867,200 loops/s.
 hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 204 sector (102 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -16,17 +16,16 @@ Putting 'child-simple' into the file system...
 Executing 'exec-once':
 (exec-once) begin
 (exec-once) I'm your father
-exec-once: exit(-1)
-Kernel PANIC at ../../filesys/inode.c:302 in inode_allow_write(): assertion `inode->deny_write_cnt > 0' failed.
-Call stack: 0x8004218654 0x80042209d4 0x800421f82b 0x800421f5d8 0x800421c26b 0x800420728d 0x800421d8b6 0x800421d9aa 0x800421d645 0x800421d4c2.
-The `backtrace' program can make call stacks useful.
-Read "Backtraces" in the "Debugging Tools" chapter
-of the Pintos documentation for more information.
-Timer: 64 ticks
-Thread: 30 idle ticks, 31 kernel ticks, 3 user ticks
+(child-simple) run
+exec-once: exit(81)
+Execution of 'exec-once' complete.
+Timer: 68 ticks
+Thread: 30 idle ticks, 34 kernel ticks, 4 user ticks
 hd0:0: 0 reads, 0 writes
-hd0:1: 115 reads, 446 writes
+hd0:1: 159 reads, 446 writes
 hd1:0: 204 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 1399 characters output
-Key
+Console: 1045 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...

@@ -1,2 +1,26 @@
 FAIL
-run: exec child 1 of 10: "child-syn-wrt 0": FAILED
+Kernel panic in run: PANIC at ../../threads/thread.c:335 in thread_current(): assertion `is_thread (t)' failed.
+Call stack: 0x8004218654 0x80042071c3 0x8004206b9d 0x80042123b2 0x8004209576 0x8004209994 0x800421a8be 0x800421a919 0x800420bc11 0x800420bcf0 0x800420ca21 0x800420cc7e 0x800420ce62 0x800420d707 0x8004221a38 0x8004221980 0x800421ced1 0x800421c848 0x800421c08f 0x800421d994 0x800421d645 0x800421d4c2
+Translation of call stack:
+0x0000008004218654: debug_panic (lib/kernel/debug.c:32)
+0x00000080042071c3: thread_current (threads/thread.c:336)
+0x0000008004206b9d: thread_tick (threads/thread.c:156)
+0x00000080042123b2: timer_interrupt (devices/timer.c:151)
+0x0000008004209576: intr_handler (threads/interrupt.c:352)
+0x0000008004209994: intr_entry (threads/intr-stubs.o:?)
+0x000000800421a8be: bitmap_scan (lib/kernel/bitmap.c:279)
+0x000000800421a919: bitmap_scan_and_flip (lib/kernel/bitmap.c:294)
+0x000000800420bc11: palloc_get_multiple (threads/palloc.c:267 (discriminator 4))
+0x000000800420bcf0: palloc_get_page (threads/palloc.c:297)
+0x000000800420ca21: pgdir_walk (threads/mmu.c:18)
+0x000000800420cc7e: pdpe_walk (threads/mmu.c:49)
+0x000000800420ce62: pml4e_walk (threads/mmu.c:82)
+0x000000800420d707: pml4_set_page (threads/mmu.c:239)
+0x0000008004221a38: vm_do_claim_page (vm/vm.c:283)
+0x0000008004221980: vm_claim_page (vm/vm.c:264)
+0x000000800421ced1: setup_stack (userprog/process.c:805)
+0x000000800421c848: load (userprog/process.c:508)
+0x000000800421c08f: process_exec (userprog/process.c:228)
+0x000000800421d994: syscall_exec (userprog/syscall.c:162)
+0x000000800421d645: syscall_handler (userprog/syscall.c:82)
+0x000000800421d4c2: no_sti (userprog/syscall-entry.o:?)

@@ -1,2 +1,17 @@
 FAIL
-run: exec child 1 of 10: "child-syn-read 0": FAILED
+Kernel panic in run: PANIC at ../../threads/thread.c:335 in thread_current(): assertion `is_thread (t)' failed.
+Call stack: 0x8004218654 0x80042071c3 0x800420ab0b 0x800420c266 0x8004220669 0x800421fc38 0x800421fd08 0x800421e67e 0x800421c538 0x800421c08f 0x800421d994 0x800421d645 0x800421d4c2
+Translation of call stack:
+0x0000008004218654: debug_panic (lib/kernel/debug.c:32)
+0x00000080042071c3: thread_current (threads/thread.c:336)
+0x000000800420ab0b: lock_acquire (threads/synch.c:222)
+0x000000800420c266: malloc (threads/malloc.c:115)
+0x0000008004220669: inode_read_at (filesys/inode.c:208)
+0x000000800421fc38: lookup (filesys/directory.c:88 (discriminator 1))
+0x000000800421fd08: dir_lookup (filesys/directory.c:112)
+0x000000800421e67e: filesys_open (filesys/filesys.c:86)
+0x000000800421c538: load (userprog/process.c:433)
+0x000000800421c08f: process_exec (userprog/process.c:228)
+0x000000800421d994: syscall_exec (userprog/syscall.c:162)
+0x000000800421d645: syscall_handler (userprog/syscall.c:82)
+0x000000800421d4c2: no_sti (userprog/syscall-entry.o:?)

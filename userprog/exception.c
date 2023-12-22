@@ -152,7 +152,7 @@ page_fault (struct intr_frame *f) {
 	/* Count page faults. */
 	page_fault_cnt++;
 
-	// If PF by user context, call syscall_exit(-1)
+	// If PF is occured by user context, call syscall_exit(-1)
 	if (user) {
 		syscall_exit (-1);
 	}

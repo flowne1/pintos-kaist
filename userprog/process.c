@@ -28,13 +28,6 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
-struct lazy_load_info {
-	struct file *file;
-	off_t ofs;
-	size_t page_read_bytes;
-	size_t page_zero_bytes;
-};
-
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -777,7 +770,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		aux->page_zero_bytes = page_zero_bytes;
 
 		// Fixed VM_ANON to VM_FILE, need check!
-		if (!vm_alloc_page_with_initializer (VM_FILE, upage, writable, lazy_load_segment, aux)) {
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, aux)) {
 			free (aux);
 			return false;
 		}

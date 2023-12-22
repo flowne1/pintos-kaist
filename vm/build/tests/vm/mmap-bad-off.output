@@ -4,7 +4,7 @@ Kernel command line: -q -f put mmap-bad-off put large.txt run mmap-bad-off
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  81,817,600 loops/s.
+Calibrating timer...  116,940,800 loops/s.
 hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 4,017 sector (1 MB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -27,11 +27,11 @@ r11 0000000000000202 r12 000000800421d599 r13 0000800420ad3000 r14 00008004241f1
 r15 0000010424100000 rflags 00000006
 es: 001b ds: 001b cs: 0008 ss: 0010
 Kernel PANIC recursion at ../../userprog/exception.c:98 in kill().
-Timer: 156 ticks
-Thread: 30 idle ticks, 124 kernel ticks, 2 user ticks
+Timer: 161 ticks
+Thread: 30 idle ticks, 128 kernel ticks, 3 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 111 reads, 8072 writes
 hd1:0: 4017 reads, 0 writes
 hd1:1: 0 reads, 0 writes
-Console: 1790 characters output
+Console: 1791 characters output
 Key

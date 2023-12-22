@@ -10,6 +10,7 @@
         "file.h": "c",
         "stddef.h": "c",
         "vm.h": "c",
-        "loader.h": "c"
+        "loader.h": "c",
+        "mmu.h": "c"
     }
 }

@@ -8,4 +8,5 @@ vm/vm.o: ../../vm/vm.c ../../include/lib/kernel/hash.h \
  ../../include/threads/palloc.h ../../include/vm/uninit.h \
  ../../include/vm/anon.h ../../include/vm/file.h \
  ../../include/threads/malloc.h ../../include/threads/vaddr.h \
- ../../include/threads/loader.h ../../include/vm/inspect.h
+ ../../include/threads/loader.h ../../include/vm/inspect.h \
+ ../../include/userprog/process.h
