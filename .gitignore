@@ -1,5 +1,5 @@
-userprog/build/**/*
-threads/build/**/*
-vm/build/**/*
-filesys/build/**/*
-.vscode/**/*
+# userprog/build/**/*
+# threads/build/**/*
+# vm/build/**/*
+# filesys/build/**/*
+# .vscode/**/*

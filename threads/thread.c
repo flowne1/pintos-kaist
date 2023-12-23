@@ -674,6 +674,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	sema_init (&t->free_sema, 0);			// Init free_sema
 	list_init(&t->child_list);				// Init list of child
 	t->exit_status = 0;
+
+	// Privately added for VM
+	t->rsp_temp = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

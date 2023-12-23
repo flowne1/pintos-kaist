@@ -59,12 +59,8 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initializer according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
-
 		// Create struct page
-		struct page *p = malloc (sizeof (struct page));	// malloc..?
+		struct page *p = malloc (sizeof (struct page));
 		if (!p) {
 			return false;
 		}
@@ -108,30 +104,14 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va) {
 	struct page page_dummy;
-	/* TODO: Fill this function. */
 	// Round down VA for it pointing start of page
 	page_dummy.va = pg_round_down (va);
 	struct hash_elem *h_e = hash_find (&spt->hash_ptes, &page_dummy.h_elem);	// Get needed hash_elem from dummy
 	if (h_e) {
 		return hash_entry (h_e, struct page, h_elem);							// Return needed page from hash_elem
 	}
-	return NULL;
-															
-	
-	// struct page *page = NULL;
-	// // Init hash iterator
-	// struct hash_iterator h_i;
-	// hash_first (&h_i, &spt->hash_ptes);			
-	// // Traverse hash table
-	// while (hash_next (&h_i)) {					
-	// 	struct page *p = hash_entry (hash_cur (&h_i), struct page, h_elem);		// Get page using iterator
-	// 	if (p->va == va) {		// If va of page matched properly
-	// 		page = p;
-	// 		break;
-	// 	}
-	// }
 
-	// return page;
+	return NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -139,7 +119,6 @@ bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	bool succ = false;
-	/* TODO: Fill this function. */
 	// Insert PAGE into hash table SPT->HASH_PTES
 	// If we get NULL from hash_insert, it implies 'successful'
 	if (!hash_insert (&spt->hash_ptes, &page->h_elem)) {		
@@ -200,7 +179,20 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	// Align addr to page start and find page
+	void *page_start = pg_round_down (addr);
+	struct page *page = spt_find_page (&thread_current ()->spt, page_start);
+
+	// From 'page', allocate and claim all needed page immediately
+	while (page == NULL){
+		vm_alloc_page (VM_ANON|VM_MARKER_STACK, page_start, true);
+		vm_claim_page (page_start);
+
+		// Advance to next page
+		page_start += PGSIZE;
+		page = spt_find_page (&thread_current ()->spt, page_start);
+	}
 }
 
 /* Handle the fault on write_protected page */
@@ -212,15 +204,37 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	/* TODO: Validate the fault */
-	/* TODO: Your code goes here */
-	// Get page from spt
 	struct page *page = spt_find_page (spt, addr);
+    uintptr_t addr_int = (uintptr_t)addr;  // 포인터를 정수로 변환
+
+	// printf("handling addr : %p, %i below user stack\n", addr, USER_STACK - addr_int);
+	// printf("not_present : %s\n", not_present ? "true" : "false");
+	// printf("write : %s\n", write ? "true" : "false");
+	// printf("user : %s\n", user ? "true" : "false");
+
+	// If page is not found, there might be a chance that expanding stack can handle the fault.
 	if (!page) {
+		// printf("page not found\n");
+		// Expanding stack must be occured when 'WRITING'
+		if (write) {
+			// If fault address is in stack boundary, expand stack
+			if (USER_STACK - (1 << 20) <= addr && addr <= USER_STACK) {
+				vm_stack_growth (addr);
+				// printf ("stack grow\n");
+				return true;
+			}
+		}
+		// printf("return false\n");
 		return false;
 	}
+	
 	bool page_is_writable = page->is_writable;
 	bool page_for_spv_only = page->spv_only;
+	bool is_stack_page = (page->operations->type && VM_MARKER_STACK);
+
+	// bool not_present;  /* True: not-present page, false: writing r/o page. */
+	// bool write;        /* True: access was write, false: access was read. */
+	// bool user;         /* True: access by user, false: access by kernel. */
 
 	// If trying to write r/o page, it is true fault
 	if (!not_present) {
@@ -232,7 +246,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 		return false;
 	}
 
-	// If accessed by user, but page is for spv only, it is true fault
+	// If accessed by user but page is for spv only, it is true fault
 	if (user && page_for_spv_only) {
 		return false;
 	}

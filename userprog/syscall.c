@@ -33,6 +33,7 @@ static unsigned syscall_tell (int fd);
 void syscall_close (int fd);
 // Functions for implementing syscalls
 static bool is_valid_address (void *addr);
+static bool is_valid_buffer (void *addr);
 static int allocate_fd (struct file *file);
 struct file *find_file_by_fd (int fd);
 
@@ -69,6 +70,9 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+	// Save user context rsp temporarily, in case of PF in kernel context
+	thread_current ()->rsp_temp = f->rsp;
+
 	switch (f->R.rax) {
 		case SYS_HALT:
 			syscall_halt ();
@@ -202,7 +206,7 @@ syscall_open (const char *file) {
 	if (!is_valid_address (file)) {
 		syscall_exit (-1);
 	}
-
+	// printf("%s is opening : %p\n", thread_name(), file);
 	lock_acquire (&filesys_lock);
 
 	// Open file named 'file'
@@ -211,6 +215,7 @@ syscall_open (const char *file) {
 		lock_release (&filesys_lock);
 		return -1;
 	}
+	
 	// Allocate empty FD to given file
 	int fd = allocate_fd (f);
 	if (fd == -1) {
@@ -244,7 +249,7 @@ syscall_filesize (int fd) {
 static int 
 syscall_read (int fd, void *buffer, unsigned size) {
 	// Check argument validity
-	if (!is_valid_address (buffer)) {
+	if (!is_valid_buffer (buffer) || !is_valid_buffer (buffer + size)) {
 		syscall_exit (-1);
 	}
 	if (fd < 0 || fd >= MAX_FD) {
@@ -283,7 +288,7 @@ syscall_read (int fd, void *buffer, unsigned size) {
 
 static int 
 syscall_write (int fd, void *buffer, unsigned size) {
-	if (!is_valid_address (buffer)) {
+	if (!is_valid_buffer (buffer) || !is_valid_buffer (buffer + size)) {
 		syscall_exit (-1);
 	}
 	// If given fd is not in proper boundary
@@ -367,12 +372,22 @@ syscall_close (int fd) {
 // From project3 onwards, valid addr might not be in pml4, due to lazy loading
 static bool
 is_valid_address (void *addr) {
-	// return addr != NULL 
-	// && is_user_vaddr (addr)
-	// && pml4_get_page(thread_current ()->pml4, addr) != NULL;}
 	return addr != NULL 
 	&& is_user_vaddr (addr)
+	// && pml4_get_page(thread_current ()->pml4, addr) != NULL;}
 	&& spt_find_page (&thread_current ()->spt, addr);
+}
+
+// Check if given buffer is valid
+// In kernel mode, writing on R/O page do not make PF, so pre-check for buffer is needed
+static bool
+is_valid_buffer (void *addr) {
+	struct page *page = spt_find_page (&thread_current ()->spt, addr);
+	if (!page) {
+		return false;
+	}
+	bool page_is_writable = page->is_writable;
+	return is_valid_address (addr) && page_is_writable;
 }
 
 // Allocate empty FD of current process to given file
