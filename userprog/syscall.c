@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <stdint.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -15,12 +16,14 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+
 // Process-related syscalls
 static void syscall_halt (void);
 void syscall_exit (int status);
 static tid_t syscall_fork (const char *thread_name, struct intr_frame *f);
 static int syscall_exec (const char *cmd_line);
 int syscall_wait (tid_t tid);
+
 // File-related syscalls
 static bool syscall_create (const char *file, unsigned initial_size);
 static bool syscall_remove (const char *file);
@@ -31,13 +34,18 @@ static int syscall_write (int fd, void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned pos);
 static unsigned syscall_tell (int fd);
 void syscall_close (int fd);
-// Functions for implementing syscalls
-static bool is_valid_address (void *addr);
-static bool is_valid_buffer (void *addr);
+static void *syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+static void syscall_munmap (void *addr);
+
+// Helper functions for syscalls
+static bool is_valid_addr (void *addr);
+// static bool is_valid_buffer (void *addr);
+static bool is_writable_page (void *addr);
+static bool is_valid_fd (int fd);
 static int allocate_fd (struct file *file);
 struct file *find_file_by_fd (int fd);
 
-struct lock filesys_lock;	// Privately added
+struct lock filesys_lock;
 
 /* System call.
  *
@@ -70,9 +78,6 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
-	// Save user context rsp temporarily, in case of PF in kernel context
-	thread_current ()->rsp_temp = f->rsp;
-
 	switch (f->R.rax) {
 		case SYS_HALT:
 			syscall_halt ();
@@ -116,8 +121,12 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_CLOSE:
 			syscall_close (f->R.rdi);
 			break;
-		// case SYS_MMAP:
-		// case SYS_MUNMAP:
+		case SYS_MMAP:
+			f->R.rax = syscall_mmap (f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+			break;
+		case SYS_MUNMAP:
+			syscall_munmap (f->R.rdi);
+			break;
 		// case SYS_CHDIR:
 		// case SYS_MKDIR:
 		// case SYS_READDIR:
@@ -142,7 +151,7 @@ void
 syscall_exit (int status) {
 	struct thread *curr = thread_current ();
 	curr->exit_status = status;
-	printf("%s: exit(%d)\n", curr->name, status);
+	printf ("%s: exit(%i)\n", curr->name, curr->exit_status);
 	thread_exit ();
 }
 
@@ -153,7 +162,7 @@ syscall_fork (const char *thread_name, struct intr_frame *f) {
 
 static int 
 syscall_exec (const char *cmd_line) {
-	if (!is_valid_address (cmd_line)) {
+	if (!is_valid_addr (cmd_line)) {
 		syscall_exit (-1);
 	}
 
@@ -176,7 +185,7 @@ syscall_wait (tid_t tid) {
 
 static bool 
 syscall_create (const char *file, unsigned initial_size) {
-	if (!is_valid_address (file)) {
+	if (!is_valid_addr (file)) {
 		syscall_exit (-1);
 	}
 
@@ -189,7 +198,7 @@ syscall_create (const char *file, unsigned initial_size) {
 
 static bool 
 syscall_remove (const char *file) {
-	if (!is_valid_address (file)) {
+	if (!is_valid_addr (file)) {
 		syscall_exit (-1);
 	}
 
@@ -203,10 +212,9 @@ syscall_remove (const char *file) {
 static int 
 syscall_open (const char *file) {
 	// Check argument validity
-	if (!is_valid_address (file)) {
+	if (!is_valid_addr (file)) {
 		syscall_exit (-1);
 	}
-	// printf("%s is opening : %p\n", thread_name(), file);
 	lock_acquire (&filesys_lock);
 
 	// Open file named 'file'
@@ -228,13 +236,12 @@ syscall_open (const char *file) {
 
 static int 
 syscall_filesize (int fd) {
-	struct thread *curr = thread_current ();
-	int file_size = -1;
-
-	// Check if fd is in proper boundary
-	if (fd < 0 || fd >= MAX_FD) {
+	if (!is_valid_fd (fd)) {
 		return -1;
 	}
+
+	struct thread *curr = thread_current ();
+	int file_size = -1;
 	
 	struct file *f = find_file_by_fd (fd);
 	// If fd is opened in FD table, get file size
@@ -249,10 +256,13 @@ syscall_filesize (int fd) {
 static int 
 syscall_read (int fd, void *buffer, unsigned size) {
 	// Check argument validity
-	if (!is_valid_buffer (buffer) || !is_valid_buffer (buffer + size)) {
+	if (!is_valid_addr (buffer) || !is_valid_addr (buffer + size)) {
 		syscall_exit (-1);
 	}
-	if (fd < 0 || fd >= MAX_FD) {
+	if (!is_writable_page (buffer)) {
+		syscall_exit (-1);
+	}
+	if (!is_valid_fd (fd)) {
 		return -1;
 	}
 	if (size == 0) {
@@ -288,14 +298,17 @@ syscall_read (int fd, void *buffer, unsigned size) {
 
 static int 
 syscall_write (int fd, void *buffer, unsigned size) {
-	if (!is_valid_buffer (buffer) || !is_valid_buffer (buffer + size)) {
+	printf ("(test)fd : %i, buffer : %p, size : %i\n", fd, buffer, size);
+	if (!is_valid_addr (buffer) || !is_valid_addr (buffer + size)) {
 		syscall_exit (-1);
 	}
-	// If given fd is not in proper boundary
-	if (fd <= 0 || fd >= MAX_FD) {
+	if (!is_writable_page (buffer)) {
+		printf("(test)not writable!\n");
+		syscall_exit (-1);
+	}
+	if (!is_valid_fd (fd)) {
 		return -1;
 	}
-
 	// If given fd is for STDOUT
 	if (fd == 1) {
 		lock_acquire (&filesys_lock);
@@ -317,8 +330,7 @@ syscall_write (int fd, void *buffer, unsigned size) {
 
 static void 
 syscall_seek (int fd, unsigned pos) {
-	// Check if given fd is proper
-	if (fd < 0 || fd >= MAX_FD) {
+	if (!is_valid_fd (fd)) {
 		return;
 	}
 	struct file *f = find_file_by_fd (fd);
@@ -331,8 +343,7 @@ syscall_seek (int fd, unsigned pos) {
 
 static unsigned 
 syscall_tell (int fd) {
-	// Check if given fd is proper
-	if (fd < 0 || fd >= MAX_FD) {
+	if (!is_valid_fd (fd)) {
 		return;
 	}
 	struct file *f = find_file_by_fd (fd);
@@ -345,8 +356,7 @@ syscall_tell (int fd) {
 
 void 
 syscall_close (int fd) {
-	// Check if fd is in proper boundary
-	if (fd <= 1 || fd >= MAX_FD) {
+	if (!is_valid_fd (fd)) {
 		return;
 	}
 
@@ -367,27 +377,76 @@ syscall_close (int fd) {
 	return;
 }
 
+static void *
+syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	// Pre-check if args are valid
+	if (!addr 											// If addr is NULL, mmap must fail
+	|| is_kernel_vaddr (addr)							// If addr is in kernel area, mmap must fail 
+	|| (int64_t) length <= 0 							// If given length is below 0, mmap must fail
+	|| fd < 2 || fd >= MAX_FD							// Check fd, excluding STD I/O or other bad fds
+	|| addr != pg_round_down (addr) 					// If addr is not page-aligned, mmap must fail
+	|| spt_find_page (&thread_current ()->spt, addr)	// If given addr is already mapped, mmap must fail
+	|| offset % PGSIZE != 0) {							// If offset is not multiple of PGSIZE, mmap must fail
+		return NULL;
+	}
+	struct file *f = find_file_by_fd (fd);
+	// If opened file is NULL or has a length of zero bytes, mmap must fail
+	if (!f || file_length (f) == 0) {
+		return NULL;
+	}
+
+	// File must be independent from original
+	f = file_reopen (f);
+
+	// Now it's safe, do mmap and return
+	return do_mmap (addr, length, writable, f, offset);
+}
+
+static void 
+syscall_munmap (void *addr) {
+	printf("(test)munmapping\n");
+	struct thread *curr = thread_current ();
+	struct page *p = spt_find_page (&curr->spt, addr);
+	if (!p							// There must be mapped page at addr
+	|| addr != p->mmap_start_addr	// Given addr must be start of mmaped page
+	|| curr != p->mmap_caller) {	// Current process must be the caller of mmap
+		return;
+	}		
+	// Now it's safe, do munmap
+	do_munmap (addr);
+}
+
 // Validates given virtual address 
 // 'Valid address' means 1. not NULL 2. located in user area 3. mapped properly
-// From project3 onwards, valid addr might not be in pml4, due to lazy loading
+// From project3 onwards, valid addr might not be in pml4 due to lazy loading
 static bool
-is_valid_address (void *addr) {
+is_valid_addr (void *addr) {
+	bool cond1 = addr != NULL;
+	bool cond2 = is_user_vaddr (addr);
+	bool cond3 = spt_find_page (&thread_current ()->spt, addr) ? true : false;
+
 	return addr != NULL 
 	&& is_user_vaddr (addr)
 	// && pml4_get_page(thread_current ()->pml4, addr) != NULL;}
 	&& spt_find_page (&thread_current ()->spt, addr);
 }
 
-// Check if given buffer is valid
+// Check if page of given addr is writable
 // In kernel mode, writing on R/O page do not make PF, so pre-check for buffer is needed
 static bool
-is_valid_buffer (void *addr) {
+is_writable_page (void *addr) {
 	struct page *page = spt_find_page (&thread_current ()->spt, addr);
 	if (!page) {
 		return false;
 	}
-	bool page_is_writable = page->is_writable;
-	return is_valid_address (addr) && page_is_writable;
+	return page->is_writable;
+}
+
+// Check if given fd is in proper boundary
+// STD I/O (fd=0,1) must be handled by caller
+static bool 
+is_valid_fd (int fd) {
+	return (0 <= fd && fd < MAX_FD);
 }
 
 // Allocate empty FD of current process to given file

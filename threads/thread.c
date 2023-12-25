@@ -225,16 +225,15 @@ thread_create (const char *name, int priority,
 	list_push_back (&parent->child_list, &t->c_elem);
 
 	// Allocate page for FD table
-	t->fd_table = palloc_get_multiple (PAL_ZERO, 2);
+	t->fd_table = palloc_get_multiple (PAL_USER|PAL_ZERO, 2);
 	if (!t->fd_table) {
 		return TID_ERROR;
 	}
 
 	/* Add to run queue. */
-	thread_unblock (t);		// note : default value of newly initiated thread's status is BLOCKED
+	thread_unblock (t);		// Note : default value of newly initiated thread's status is BLOCKED
 
-	// For priority scheduling
-	// Try preemption
+	// For priority scheduling : try preemption
 	thread_try_preemption ();
 
 	return tid;
@@ -676,7 +675,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->exit_status = 0;
 
 	// Privately added for VM
-	t->rsp_temp = NULL;
+	// t->rsp_temp = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

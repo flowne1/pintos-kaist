@@ -129,7 +129,7 @@ struct thread {
 	int exit_status;					// Exit status of process
 
 	// Privately added for VM
-	void *rsp_temp;
+	// void *rsp_temp;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */

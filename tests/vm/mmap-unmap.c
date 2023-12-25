@@ -5,6 +5,7 @@
 #include "tests/vm/sample.inc"
 #include "tests/lib.h"
 #include "tests/main.h"
+#include "include/lib/stdio.h"
 
 #define ACTUAL ((void *) 0x10000000)
 
@@ -22,6 +23,8 @@ test_main (void)
 
   munmap (map);
 
+  printf("(test)here\n");
   fail ("unmapped memory is readable (%d)", *(int *) (ACTUAL + 0x1000));
+  printf("(test)here\n");
   fail ("unmapped memory is readable (%d)", *(int *) (ACTUAL));
 }

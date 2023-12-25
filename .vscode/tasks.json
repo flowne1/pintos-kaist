@@ -25,13 +25,13 @@
                 //"-T", "60",
                 "-m", "20",
                 "--fs-disk=10",
-                "-p", "tests/userprog/fork-read:fork-read",
-                "-p", "../../tests/userprog/sample.txt:sample.txt", // Additional file
+                "-p", "tests/vm/mmap-clean:mmap-clean",
+                "-p", "../../tests/vm/sample.txt:sample.txt", // Additional file
                 "--swap-disk=4",
                 "--",
                 "-q",
                 "-f", "run",
-                "fork-read"
+                "mmap-clean"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/${input:project}/build"

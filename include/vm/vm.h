@@ -18,8 +18,10 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
+	// Marker for stack page
 	VM_MARKER_STACK = (1 << 3),
-	VM_MARKER_1 = (1 << 4),
+	// Marker for mmaped page
+	VM_MARKER_MMAP = (1 << 4),
 
 	/* DO NOT EXCEED THIS VALUE. */
 	VM_MARKER_END = (1 << 31),
@@ -48,12 +50,15 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
-	bool is_present;				// Is present in physical memory?
-	bool is_dirty;					// Is dirty(changed)?
+	// bool is_present;				// Is present in physical memory?
+	// bool is_dirty;					// Is dirty(changed)?
 	bool spv_only;					// For all or supervisor only?
 	bool is_writable;				// Is allowed to write?(if not, read-only)
-	bool is_accessed;				// Check if page is accessed recently, used for page replacement policy
+	// bool is_accessed;				// Check if page is accessed recently, used for page replacement policy
 	struct hash_elem h_elem; 		// Hash elem used for hash table
+	void *mmap_start_addr;			// Start addr of mmaped pages
+	int mmap_num_contig_page;		// Number of contiguous mmaped pages
+	struct thread *mmap_caller;		// Caller of mmap
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */

@@ -86,8 +86,15 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		// Call uninit_new, creating "uninit" page struct and initialize it 
 		uninit_new (p, upage, init, type, aux, initializer);
 
-		// Modify fields of page, if needed
-		p->is_writable = writable; 
+		// Set fields of page properly
+		p->is_writable = writable;	
+		if (type & VM_MARKER_MMAP) {
+			struct lazy_load_info *aux = (struct lazy_load_info *) aux;
+			p->mmap_start_addr = aux->mmap_start_addr;
+			p->mmap_num_contig_page = aux->mmap_num_contig_page;
+			p->mmap_caller = aux->mmap_caller;
+		}
+
 
 		/* TODO: Insert the page into the spt. */
 		if (!spt_insert_page (spt, p)) {
@@ -131,7 +138,6 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	vm_dealloc_page (page);
-	return true;
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -205,8 +211,8 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = spt_find_page (spt, addr);
-    uintptr_t addr_int = (uintptr_t)addr;  // 포인터를 정수로 변환
 
+	// uintptr_t addr_int = (uintptr_t)addr;  // 포인터를 정수로 변환
 	// printf("handling addr : %p, %i below user stack\n", addr, USER_STACK - addr_int);
 	// printf("not_present : %s\n", not_present ? "true" : "false");
 	// printf("write : %s\n", write ? "true" : "false");
@@ -315,29 +321,50 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 	// Init hash iterator for src spt
 	struct hash_iterator h_i;
 	hash_first (&h_i, &src->hash_ptes);
-
 	// Traverse src spt, find src page and copy
-	while (hash_next (&h_i)) {					
+
+
+	while (hash_next (&h_i)) {
 		struct page *src_p = hash_entry (hash_cur (&h_i), struct page, h_elem);		// Get page using iterator
 		enum vm_type type = src_p->operations->type;								
 		vm_initializer *init = NULL;
-		void *aux = NULL;
-		bool need_claim = (type != VM_UNINIT);	// If page is already init'd, need claim
-
+		// void *aux = NULL;
+		struct lazy_load_info *aux = NULL;
+		bool need_claim = (VM_TYPE(type) != VM_UNINIT);	// If page is already init'd, need claim
 		// If page is uninitialized(has no frame), fetch init data before allocating page
-		if (type == VM_UNINIT) {
+		if (VM_TYPE(type) == VM_UNINIT) {
 			type = src_p->uninit.type;
 			init = src_p->uninit.init;
 			// Note : 'aux' is memory allocated struct that can be freed, so malloc & copy all contents
 			aux = (struct lazy_load_info *)malloc (sizeof (struct lazy_load_info));
 			memcpy (aux, src_p->uninit.aux, sizeof(struct lazy_load_info));
-		}
+		// If page is file-backed, fetch aux data before allocating page
+		} 
+		else if (VM_TYPE(type) == VM_FILE) {
+			// Note : 'aux' is memory allocated struct that can be freed, so malloc & copy all contents
+			aux = (struct lazy_load_info *)malloc (sizeof (struct lazy_load_info));
+			// Set aux data properly
+			aux->file = src_p->file.file;
+			aux->ofs = src_p->file.ofs;
+			aux->page_read_bytes = src_p->file.page_read_bytes;
+			aux->page_zero_bytes = src_p->file.page_zero_bytes;
+			aux->mmap_start_addr = src_p->mmap_start_addr;
+			aux->mmap_num_contig_page = src_p->mmap_num_contig_page;
+			aux->mmap_caller = src_p->mmap_caller;
 
+			// struct file *file;
+			// off_t ofs;
+			// size_t page_read_bytes;
+			// size_t page_zero_bytes;
+			// // Aux data for munmap
+			// void *mmap_start_addr;			// Start addr of mmaped pages
+			// int mmap_num_contig_page;		// Number of contiguous mmaped pages
+			// struct thread *mmap_caller		// Caller of mmap
+		}
 		// Allocate page
 		if (!vm_alloc_page_with_initializer (type, src_p->va, src_p->is_writable, init, aux)) {
 			continue;
 		}
-
 		// Do claim, if necessary
 		if (need_claim) {
 			if (!vm_claim_page (src_p->va)) {
@@ -347,7 +374,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 			memcpy (dst_p->frame->kva, src_p->frame->kva, PGSIZE);
 		}
 	}
-	
 	// All copy tasks done, return true
 	return true;
 }

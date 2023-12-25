@@ -1,0 +1,40 @@
+FAIL
+Test output failed to match any acceptable form.
+
+Acceptable output:
+  (mmap-clean) begin
+  (mmap-clean) open "sample.txt"
+  (mmap-clean) mmap "sample.txt"
+  (mmap-clean) write "sample.txt"
+  (mmap-clean) munmap "sample.txt"
+  (mmap-clean) seek "sample.txt"
+  (mmap-clean) read "sample.txt"
+  (mmap-clean) file change was retained after munmap
+  (mmap-clean) end
+Differences in `diff -u' format:
++ (test)upage 0x400000 loading, writable : 0
++ (test)upage 0x401000 loading, writable : 0
++ (test)upage 0x402000 loading, writable : 0
++ (test)upage 0x403000 loading, writable : 0
++ (test)upage 0x404000 loading, writable : 0
++ (test)upage 0x405000 loading, writable : 0
++ (test)upage 0x605000 loading, writable : 1
++ (test)fd : 1, buffer : 0x6057a0, size : 19
+  (mmap-clean) begin
++ (test)fd : 1, buffer : 0x4747fe70, size : 21
++ overwrite : 0x404800
++ (test)fd : 1, buffer : 0x6057a0, size : 31
+  (mmap-clean) open "sample.txt"
++ (test)fd : 1, buffer : 0x6057a0, size : 31
+  (mmap-clean) mmap "sample.txt"
++ (test)fd : 1, buffer : 0x6057a0, size : 32
+  (mmap-clean) write "sample.txt"
+- (mmap-clean) munmap "sample.txt"
+- (mmap-clean) seek "sample.txt"
+- (mmap-clean) read "sample.txt"
+- (mmap-clean) file change was retained after munmap
+- (mmap-clean) end
++ (test)fd : 2, buffer : 0x404800, size : 31
++ (test)not writable!
+
+(Process exit codes are excluded for matching purposes.)

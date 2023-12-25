@@ -11,6 +11,7 @@
         "stddef.h": "c",
         "vm.h": "c",
         "loader.h": "c",
-        "mmu.h": "c"
+        "mmu.h": "c",
+        "string.h": "c"
     }
 }
