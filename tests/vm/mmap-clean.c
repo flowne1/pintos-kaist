@@ -11,7 +11,6 @@ void
 test_main (void)
 {
   static const char overwrite[] = "Now is the time for all good...";
-  printf("overwrite : %p\n", overwrite);
   static char buffer[sizeof sample - 1];
   char *actual = (char *) 0x54321000;
   int handle;

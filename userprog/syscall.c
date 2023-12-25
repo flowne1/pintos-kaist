@@ -298,14 +298,13 @@ syscall_read (int fd, void *buffer, unsigned size) {
 
 static int 
 syscall_write (int fd, void *buffer, unsigned size) {
-	printf ("(test)fd : %i, buffer : %p, size : %i\n", fd, buffer, size);
 	if (!is_valid_addr (buffer) || !is_valid_addr (buffer + size)) {
 		syscall_exit (-1);
 	}
-	if (!is_writable_page (buffer)) {
-		printf("(test)not writable!\n");
-		syscall_exit (-1);
-	}
+	// if (!is_writable_page (buffer)) {
+	// 	printf("(test)not writable!\n");
+	// 	syscall_exit (-1);
+	// }
 	if (!is_valid_fd (fd)) {
 		return -1;
 	}
@@ -404,7 +403,6 @@ syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 
 static void 
 syscall_munmap (void *addr) {
-	printf("(test)munmapping\n");
 	struct thread *curr = thread_current ();
 	struct page *p = spt_find_page (&curr->spt, addr);
 	if (!p							// There must be mapped page at addr

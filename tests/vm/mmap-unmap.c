@@ -23,8 +23,6 @@ test_main (void)
 
   munmap (map);
 
-  printf("(test)here\n");
   fail ("unmapped memory is readable (%d)", *(int *) (ACTUAL + 0x1000));
-  printf("(test)here\n");
   fail ("unmapped memory is readable (%d)", *(int *) (ACTUAL));
 }
