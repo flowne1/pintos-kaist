@@ -101,6 +101,8 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+		// printf ("(test)mmap upage:%p, file:%p, ofs:%i\n", upage,file,ofs);
+		// printf ("(test)read : %i, pread : %i, pzero : %i\n", read_bytes, page_read_bytes, page_zero_bytes);
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
 		struct lazy_load_info *aux = malloc (sizeof (struct lazy_load_info));

@@ -396,6 +396,8 @@ syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 
 	// File must be independent from original
 	f = file_reopen (f);
+	// Set mmap length equal to file-length
+	length = file_length (f);
 
 	// Now it's safe, do mmap and return
 	return do_mmap (addr, length, writable, f, offset);
