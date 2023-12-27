@@ -23,15 +23,15 @@
                 "-v",
                 "-k",
                 //"-T", "60",
-                "-m", "20",
+                "-m", "10",
                 "--fs-disk=10",
-                "-p", "tests/vm/mmap-clean:mmap-clean",
-                "-p", "../../tests/vm/sample.txt:sample.txt", // Additional file
-                "--swap-disk=4",
+                "-p", "tests/vm/swap-anon:swap-anon",
+                // "-p", "../../tests/vm/sample.txt:sample.txt", // Additional file
+                "--swap-disk=30",
                 "--",
                 "-q",
                 "-f", "run",
-                "mmap-clean"
+                "swap-anon"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/${input:project}/build"

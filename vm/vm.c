@@ -8,11 +8,18 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "userprog/process.h"
+// Privately added
+#include "threads/vaddr.h"		
+#include "lib/kernel/bitmap.h"
+#include "devices/disk.h"
+#include "threads/mmu.h"
+
 
 // Privately added
 unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED);
 bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 void hash_action_destroy_page (struct hash_elem *e, void *aux);
+
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -87,12 +94,12 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		uninit_new (p, upage, init, type, aux, initializer);
 
 		// Set fields of page properly
+		p->owner = thread_current ();
 		p->is_writable = writable;	
 		if (type & VM_MARKER_MMAP) {
 			struct lazy_load_info *aux = (struct lazy_load_info *) aux;
 			p->mmap_start_addr = aux->mmap_start_addr;
 			p->mmap_num_contig_page = aux->mmap_num_contig_page;
-			p->mmap_caller = aux->mmap_caller;
 		}
 
 
@@ -137,14 +144,55 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	// Delete page from hash table
+	if (!hash_delete (spt, &page->h_elem)) {
+		printf ("(test)given page is not in spt!\n");
+	}
+	// Free resources of page
 	vm_dealloc_page (page);
 }
 
 /* Get the struct frame, that will be evicted. */
 static struct frame *
 vm_get_victim (void) {
+	struct thread *curr = thread_current ();
+	struct thread *owner = NULL;
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	void *victim_va = NULL;
+	/* TODO: The policy for eviction is up to you. */
+
+	printf("(test)get victim!\n");
+	printf("(test)curr : %s\n", thread_name ());
+
+	// // Traverse frame_list, and pick victim using clock-algorithm
+	// struct list_elem *f_e = (clock_pointer == list_head (&frame_list))? list_begin (&frame_list) : clock_pointer;		// We will start traverse from saved clock pointer
+	// while (true) {
+	// 	victim = list_entry (f_e, struct frame, f_elem);
+	// 	owner = victim->page->owner;
+	// 	printf ("(test)curr : %s, owner : %s, upage : %p\n", thread_name (), owner->name, victim->page->va);
+	// 	void *victim_va = victim->page->va;
+
+	// 	// If accessed bit of frame is set, set it to 0 and skip this frame
+	// 	if (pml4_is_accessed (&owner->pml4, victim_va)) {
+	// 		pml4_set_accessed (*owner->pml4, victim_va, false);
+	// 		f_e = (f_e == list_end (&frame_list))? list_begin (&frame_list) : list_next (f_e);
+	// 		continue;
+	// 	}
+	// 	// Else if accessed bit is 0, it will be victim, and set next to clock pointer
+	// 	clock_pointer = (f_e == list_end (&frame_list))? list_begin (&frame_list) : list_next (f_e);
+	// 	break;
+	// }
+
+	// struct list_elem *e = list_head (&frame_list);
+	// while ((e = list_next (e)) != list_end (&frame_list))
+	// {
+	// 	victim=list_entry(e, struct frame, f_elem);
+	// 	return victim;
+	// }
+
+	// FIFO
+	victim = list_entry (list_pop_front (&frame_list), struct frame, f_elem);
+	list_push_back (&frame_list, &victim->f_elem);
 
 	return victim;
 }
@@ -153,10 +201,26 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+	printf("(test)evict_frame!\n");
+	struct frame *victim = vm_get_victim ();
 
-	return NULL;
+	/* TODO: swap out the victim and return the evicted frame. */
+	// Swap out victim
+	printf("(test)swap out victim\n");
+	if (!swap_out (victim->page)) {
+		return NULL;
+	}
+
+	printf ("(test) victim frame : %p, page : %p\n", victim, victim->page->va);
+
+	// Clear page from pml4, and delete frame-page connection
+	pml4_clear_page (&victim->page->owner->pml4, victim->page->va);
+	victim->page = NULL;
+
+	// list_remove (&victim->f_elem);
+	// list_push_back (&frame_list, &victim->f_elem);
+
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -166,20 +230,27 @@ vm_evict_frame (void) {
 static struct frame *
 vm_get_frame (void) {
 	/* TODO: Fill this function. */
-	void *kva = palloc_get_page (PAL_USER | PAL_ZERO);
+	void *kva = NULL;
+	struct frame *frame = NULL;
+	kva = palloc_get_page (PAL_USER | PAL_ZERO);
+	// Note : palloc_get_page returns NULL if not enough page is available
+	// In this case, we need to swap out some pages and get freed frame
 	if (!kva) {
-		PANIC ("todo");
+		frame = vm_evict_frame ();
+		return frame;
 	}
-	struct frame *frame = (struct frame *) malloc (sizeof (struct frame));
+
+	// Else if palloc is successful, make new frame and set data
+	frame = (struct frame *) malloc (sizeof (struct frame));
 	if (!frame) {
 		palloc_free_page (kva);
-		PANIC ("todo");
+		return NULL;
 	}
 	frame->kva = kva;
 
+	// Push back newly created frame in frame_list
+	list_push_back (&frame_list, &frame->f_elem);
 
-	// ASSERT (frame != NULL);
-	// ASSERT (frame->page == NULL);
 	return frame;
 }
 
@@ -220,17 +291,14 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 
 	// If page is not found, there might be a chance that expanding stack can handle the fault.
 	if (!page) {
-		// printf("page not found\n");
 		// Expanding stack must be occured when 'WRITING'
 		if (write) {
 			// If fault address is in stack boundary, expand stack
 			if (USER_STACK - (1 << 20) <= addr && addr <= USER_STACK) {
 				vm_stack_growth (addr);
-				// printf ("stack grow\n");
 				return true;
 			}
 		}
-		// printf("return false\n");
 		return false;
 	}
 	
@@ -242,7 +310,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	// bool write;        /* True: access was write, false: access was read. */
 	// bool user;         /* True: access by user, false: access by kernel. */
 
-	// If trying to write r/o page, it is true fault
+	// If trying to write on r/o page, it is true fault
 	if (!not_present) {
 		return false;
 	}
@@ -318,19 +386,19 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
 	// Note : This function is called by forked process' context
+
 	// Init hash iterator for src spt
 	struct hash_iterator h_i;
 	hash_first (&h_i, &src->hash_ptes);
+
 	// Traverse src spt, find src page and copy
-
-
 	while (hash_next (&h_i)) {
 		struct page *src_p = hash_entry (hash_cur (&h_i), struct page, h_elem);		// Get page using iterator
 		enum vm_type type = src_p->operations->type;								
 		vm_initializer *init = NULL;
-		// void *aux = NULL;
 		struct lazy_load_info *aux = NULL;
 		bool need_claim = (VM_TYPE(type) != VM_UNINIT);	// If page is already init'd, need claim
+
 		// If page is uninitialized(has no frame), fetch init data before allocating page
 		if (VM_TYPE(type) == VM_UNINIT) {
 			type = src_p->uninit.type;
@@ -338,9 +406,8 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 			// Note : 'aux' is memory allocated struct that can be freed, so malloc & copy all contents
 			aux = (struct lazy_load_info *)malloc (sizeof (struct lazy_load_info));
 			memcpy (aux, src_p->uninit.aux, sizeof(struct lazy_load_info));
-		// If page is file-backed, fetch aux data before allocating page
-		} 
-		else if (VM_TYPE(type) == VM_FILE) {
+		// Else if page is file-backed, fetch aux data before allocating page
+		} else if (VM_TYPE(type) == VM_FILE) {
 			// Note : 'aux' is memory allocated struct that can be freed, so malloc & copy all contents
 			aux = (struct lazy_load_info *)malloc (sizeof (struct lazy_load_info));
 			// Set aux data properly
@@ -350,21 +417,13 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 			aux->page_zero_bytes = src_p->file.page_zero_bytes;
 			aux->mmap_start_addr = src_p->mmap_start_addr;
 			aux->mmap_num_contig_page = src_p->mmap_num_contig_page;
-			aux->mmap_caller = src_p->mmap_caller;
-
-			// struct file *file;
-			// off_t ofs;
-			// size_t page_read_bytes;
-			// size_t page_zero_bytes;
-			// // Aux data for munmap
-			// void *mmap_start_addr;			// Start addr of mmaped pages
-			// int mmap_num_contig_page;		// Number of contiguous mmaped pages
-			// struct thread *mmap_caller		// Caller of mmap
 		}
+
 		// Allocate page
 		if (!vm_alloc_page_with_initializer (type, src_p->va, src_p->is_writable, init, aux)) {
 			continue;
 		}
+
 		// Do claim, if necessary
 		if (need_claim) {
 			if (!vm_claim_page (src_p->va)) {

@@ -19,7 +19,6 @@ struct lazy_load_info {
 	// Aux data for munmap
 	void *mmap_start_addr;			// Start addr of mmaped pages
 	int mmap_num_contig_page;		// Number of contiguous mmaped pages
-	struct thread *mmap_caller		// Caller of mmap
 };
 #ifdef VM
 bool lazy_load_segment (struct page *page, void *aux);

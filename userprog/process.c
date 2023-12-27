@@ -288,6 +288,7 @@ process_wait (tid_t child_tid) {
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
+	printf("(test)exiting %s\n", thread_name ());
 	struct thread *curr = thread_current ();
 	// Close all opened file
 	for (int i = 2; i < MAX_FD; i++) {

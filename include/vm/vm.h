@@ -37,6 +37,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
+
 #define VM_TYPE(type) ((type) & 7)
 
 /* The representation of "page".
@@ -58,7 +59,7 @@ struct page {
 	struct hash_elem h_elem; 		// Hash elem used for hash table
 	void *mmap_start_addr;			// Start addr of mmaped pages
 	int mmap_num_contig_page;		// Number of contiguous mmaped pages
-	struct thread *mmap_caller;		// Caller of mmap
+	struct thread *owner;			// Process that owns this page
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -72,10 +73,16 @@ struct page {
 	};
 };
 
+// For swapping pages in and out
+struct bitmap *bm_swap_disk;		// Bitmap of swap_disk
+struct list frame_list;				// List of frame, for linear traverse
+struct list_elem *clock_pointer;	// Start point of traverse, for clock-algorithm
+
 /* The representation of "frame" */
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem f_elem;
 };
 
 /* The function table for page operations.

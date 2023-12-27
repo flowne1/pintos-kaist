@@ -157,6 +157,7 @@ syscall_exit (int status) {
 
 static tid_t 
 syscall_fork (const char *thread_name, struct intr_frame *f) {
+	printf ("(test)syscall fork??\n");
 	return process_fork (thread_name, f);
 }
 
@@ -301,10 +302,6 @@ syscall_write (int fd, void *buffer, unsigned size) {
 	if (!is_valid_addr (buffer) || !is_valid_addr (buffer + size)) {
 		syscall_exit (-1);
 	}
-	// if (!is_writable_page (buffer)) {
-	// 	printf("(test)not writable!\n");
-	// 	syscall_exit (-1);
-	// }
 	if (!is_valid_fd (fd)) {
 		return -1;
 	}
@@ -409,7 +406,7 @@ syscall_munmap (void *addr) {
 	struct page *p = spt_find_page (&curr->spt, addr);
 	if (!p							// There must be mapped page at addr
 	|| addr != p->mmap_start_addr	// Given addr must be start of mmaped page
-	|| curr != p->mmap_caller) {	// Current process must be the caller of mmap
+	|| curr != p->owner) {			// Current process must be the caller of mmap
 		return;
 	}		
 	// Now it's safe, do munmap

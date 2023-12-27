@@ -116,7 +116,6 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		// Aux gets additional data for munmap, for setting fields of page
 		aux->mmap_start_addr = addr;
 		aux->mmap_num_contig_page = page_need;
-		aux->mmap_caller = thread_current ();
 		
 
 		if (!vm_alloc_page_with_initializer (VM_FILE|VM_MARKER_MMAP, upage, writable, lazy_load_segment, aux)) {
@@ -149,14 +148,17 @@ do_munmap (void *addr) {
 		}
 		// // // Page must be 'destroyed', as it will not be used anymore
 		// file_backed_destroy (p);
-		// // Remove page from spt, freeing all the resources
-		// spt_remove_page (&thread_current ()->spt, p);
 
+		// Write back all the dirties, if any
 		file_backed_write_back (p);
+
+		// Remove page from spt, freeing all the resources
+		spt_remove_page (&thread_current ()->spt, p);
 		
 		// Advance
 		addr_temp += PGSIZE;
 	}
+
 	// After all write-back is done, close opened file
 	file_close (f);
 }
